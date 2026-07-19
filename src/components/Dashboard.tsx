@@ -1,38 +1,53 @@
-import React from 'react';
-import { StyleSheet, Text, View, ScrollView, TouchableOpacity } from 'react-native';
-import { Crop, WorkLog, PesticideLog } from '../types';
+import React, { useState } from 'react';
+import { StyleSheet, Text, View, ScrollView, TouchableOpacity, TextInput, Modal, Alert } from 'react-native';
+import { Crop, CropStage, WorkLog, PesticideLog } from '../types';
 import { Language, TRANSLATIONS, translateStage, translateActivity } from '../translations';
 
 interface DashboardProps {
   crops: Crop[];
   workLogs: WorkLog[];
   pesticideLogs: PesticideLog[];
-  onNavigateToTab: (tab: string) => void;
   onSelectCrop: (crop: Crop) => void;
+  onAddCrop: (crop: Omit<Crop, 'id'>) => Promise<any>;
   language: Language;
 }
 
-export default function Dashboard({ crops, workLogs, pesticideLogs, onNavigateToTab, onSelectCrop, language }: DashboardProps) {
+const STAGES: CropStage[] = ['Seedling', 'Vegetative', 'Flowering', 'Fruiting', 'Harvested', 'Archived'];
+
+export default function Dashboard({ crops, workLogs, pesticideLogs, onSelectCrop, onAddCrop, language }: DashboardProps) {
   const t = TRANSLATIONS[language];
+
+  // UI States
+  const [showAddModal, setShowAddModal] = useState(false);
+  const [filterStage, setFilterStage] = useState<string>('All');
+  const [searchQuery, setSearchQuery] = useState('');
+
+  // Form Fields for Add Crop
+  const [name, setName] = useState('');
+  const [type, setType] = useState('');
+  const [variety, setVariety] = useState('');
+  const [field, setField] = useState('');
+  const [plantingDate, setPlantingDate] = useState(new Date().toISOString().split('T')[0]);
+  const [expectedHarvestDate, setExpectedHarvestDate] = useState('');
+  const [notes, setNotes] = useState('');
 
   // Calculations
   const activeCrops = crops.filter(c => c.stage !== 'Archived');
   
   const totalExpenses = workLogs.reduce((sum, log) => sum + log.totalCost, 0);
+  const totalRevenue = workLogs.reduce((sum, log) => sum + (log.income || 0), 0);
+  const netProfit = totalRevenue - totalExpenses;
+
   const laborTotal = workLogs.reduce((sum, log) => sum + log.laborCost, 0);
   const materialTotal = workLogs.reduce((sum, log) => sum + log.materialCost, 0);
   const equipmentTotal = workLogs.reduce((sum, log) => sum + log.equipmentCost, 0);
 
-  // Expense by crop
-  const cropExpenses = crops.map(crop => {
-    const cost = workLogs
-      .filter(log => log.cropId === crop.id)
-      .reduce((sum, log) => sum + log.totalCost, 0);
-    return { ...crop, cost };
-  }).filter(c => c.cost > 0 || c.stage !== 'Archived');
-
-  // Expense by activity type
-  const activities = ['Tillage', 'Planting', 'Weeding', 'Irrigation', 'Pruning', 'Spraying', 'Harvesting', 'Adding Manure', 'Other'] as const;
+  // Expense by activity type (updated activities list)
+  const activities = [
+    'Tillage', 'Planting', 'Weeding', 'Irrigation', 'Pruning', 'Spraying', 'Harvesting',
+    'Adding Manure', 'Vine Tying', 'Shade Regulation', 'Trashing', 'Curing', 'Other'
+  ] as const;
+  
   const activityCosts = activities.map(act => {
     const cost = workLogs
       .filter(log => log.activityType === act)
@@ -42,126 +57,311 @@ export default function Dashboard({ crops, workLogs, pesticideLogs, onNavigateTo
 
   const maxActivityCost = Math.max(...activityCosts.map(a => a.cost), 1);
 
+  // Withholding warnings
+  const withholdingWarnings: Array<{ cropId: string; cropName: string; pesticideName: string; daysLeft: number }> = [];
+  const todayStr = new Date().toISOString().split('T')[0];
+  const todayTime = new Date(todayStr).getTime();
+
+  activeCrops.forEach(crop => {
+    let maxDaysLeft = 0;
+    let worstPesticideName = '';
+
+    pesticideLogs.forEach(pest => {
+      if (pest.cropIds && pest.cropIds.includes(crop.id) && pest.withholdingDays && pest.withholdingDays > 0) {
+        const sprayTime = new Date(pest.date).getTime();
+        const daysPassed = (todayTime - sprayTime) / (1000 * 60 * 60 * 24);
+        const daysLeft = Math.ceil(pest.withholdingDays - daysPassed);
+        if (daysLeft > 0 && daysLeft > maxDaysLeft) {
+          maxDaysLeft = daysLeft;
+          worstPesticideName = pest.pesticideName;
+        }
+      }
+    });
+
+    if (maxDaysLeft > 0) {
+      withholdingWarnings.push({
+        cropId: crop.id,
+        cropName: crop.name,
+        pesticideName: worstPesticideName,
+        daysLeft: maxDaysLeft
+      });
+    }
+  });
+
+  // Filter crops
+  const filteredCrops = crops.filter(crop => {
+    const matchesSearch = crop.name.toLowerCase().includes(searchQuery.toLowerCase()) || 
+                          crop.type.toLowerCase().includes(searchQuery.toLowerCase()) ||
+                          crop.field.toLowerCase().includes(searchQuery.toLowerCase());
+    const matchesStage = filterStage === 'All' || crop.stage === filterStage;
+    return matchesSearch && matchesStage;
+  });
+
+  const handleSubmit = async () => {
+    if (!name || !type || !field) {
+      Alert.alert(
+        language === 'ml' ? 'അപൂർണ്ണമായ വിവരങ്ങൾ' : 'Missing Fields',
+        language === 'ml' ? 'പേര്, വിളയുടെ ഇനം, കൃഷിസ്ഥലം എന്നിവ പൂരിപ്പിക്കുക.' : 'Please fill in Name, Crop Type, and Field Location.'
+      );
+      return;
+    }
+    const cropData: Omit<Crop, 'id'> = {
+      name,
+      type,
+      variety,
+      field,
+      plantingDate,
+      expectedHarvestDate: expectedHarvestDate || new Date(Date.now() + 90 * 24 * 60 * 60 * 1000).toISOString().split('T')[0], // default 90 days
+      stage: 'Seedling',
+      notes,
+    };
+    await onAddCrop(cropData);
+    setShowAddModal(false);
+    // Reset Form
+    setName('');
+    setType('');
+    setVariety('');
+    setField('');
+    setPlantingDate(new Date().toISOString().split('T')[0]);
+    setExpectedHarvestDate('');
+    setNotes('');
+  };
+
   return (
-    <ScrollView style={styles.container} contentContainerStyle={styles.content}>
-      {/* Sub Header */}
-      <View style={styles.header}>
-        <Text style={styles.subWelcomeText}>{t.appSub}</Text>
-      </View>
-
-      {/* Main Expense Dashboard Card */}
-      <View style={styles.dashboardCard}>
-        <Text style={styles.cardLabel}>{t.totalInvestment}</Text>
-        <Text style={styles.totalValue}>₹{totalExpenses.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</Text>
+    <View style={styles.container}>
+      {/* Search & Filter section is persistent at the top of crop list */}
+      <ScrollView contentContainerStyle={styles.content}>
         
-        {/* Cost Breakdown Progress Bars */}
-        <View style={styles.breakdownContainer}>
-          {/* Labor */}
-          <View style={styles.breakdownItem}>
-            <View style={styles.breakdownHeader}>
-              <Text style={styles.breakdownName}>{t.laborCost}</Text>
-              <Text style={styles.breakdownVal}>₹{laborTotal.toFixed(0)}</Text>
+        {/* Sub Header */}
+        <View style={styles.header}>
+          <Text style={styles.subWelcomeText}>{t.appSub}</Text>
+        </View>
+
+        {/* Withholding Period Warnings */}
+        {withholdingWarnings.length > 0 && (
+          <View style={styles.warningContainer}>
+            <Text style={styles.warningHeader}>{t.withholdingWarning}</Text>
+            {withholdingWarnings.map((warn, index) => (
+              <View key={index} style={styles.warningItem}>
+                <Text style={styles.warningText}>
+                  {language === 'ml' 
+                    ? `${warn.cropName}-ൽ ${warn.pesticideName} ഉപയോഗിച്ചിരിക്കുന്നു. വിളവെടുക്കരുത്!` 
+                    : `${warn.cropName} was sprayed with ${warn.pesticideName}. DO NOT harvest!`
+                  }
+                </Text>
+                <View style={styles.badge}>
+                  <Text style={styles.badgeText}>{warn.daysLeft} {t.daysLeft}</Text>
+                </View>
+              </View>
+            ))}
+          </View>
+        )}
+
+        {/* Main Expense/Revenue Dashboard Card */}
+        <View style={styles.dashboardCard}>
+          <View style={styles.financialRow}>
+            <View style={styles.financialCol}>
+              <Text style={styles.cardLabel}>{t.totalExpenses}</Text>
+              <Text style={styles.financialValue}>₹{totalExpenses.toLocaleString('en-US', { maximumFractionDigits: 0 })}</Text>
             </View>
-            <View style={styles.progressBarBg}>
-              <View style={[styles.progressBarFill, { width: `${(laborTotal / (totalExpenses || 1)) * 100}%`, backgroundColor: '#ffb300' }]} />
+            <View style={styles.financialCol}>
+              <Text style={styles.cardLabel}>{t.revenue}</Text>
+              <Text style={styles.financialValue}>₹{totalRevenue.toLocaleString('en-US', { maximumFractionDigits: 0 })}</Text>
             </View>
           </View>
 
-          {/* Materials */}
-          <View style={styles.breakdownItem}>
-            <View style={styles.breakdownHeader}>
-              <Text style={styles.breakdownName}>{t.materialsInputs}</Text>
-              <Text style={styles.breakdownVal}>₹{materialTotal.toFixed(0)}</Text>
-            </View>
-            <View style={styles.progressBarBg}>
-              <View style={[styles.progressBarFill, { width: `${(materialTotal / (totalExpenses || 1)) * 100}%`, backgroundColor: '#4caf50' }]} />
-            </View>
-          </View>
+          <View style={styles.profitDivider} />
 
-          {/* Equipment */}
-          <View style={styles.breakdownItem}>
-            <View style={styles.breakdownHeader}>
-              <Text style={styles.breakdownName}>{t.equipmentFuel}</Text>
-              <Text style={styles.breakdownVal}>₹{equipmentTotal.toFixed(0)}</Text>
+          <View style={styles.profitRow}>
+            <Text style={styles.profitLabel}>{t.profit}</Text>
+            <Text style={[styles.profitValueText, { color: netProfit >= 0 ? '#4caf50' : '#ff5252' }]}>
+              ₹{netProfit.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+            </Text>
+          </View>
+          
+          {/* Cost Breakdown Progress Bars */}
+          <View style={styles.breakdownContainer}>
+            {/* Labor */}
+            <View style={styles.breakdownItem}>
+              <View style={styles.breakdownHeader}>
+                <Text style={styles.breakdownName}>{t.laborCost}</Text>
+                <Text style={styles.breakdownVal}>₹{laborTotal.toFixed(0)}</Text>
+              </View>
+              <View style={styles.progressBarBg}>
+                <View style={[styles.progressBarFill, { width: `${(laborTotal / (totalExpenses || 1)) * 100}%`, backgroundColor: '#ffb300' }]} />
+              </View>
             </View>
-            <View style={styles.progressBarBg}>
-              <View style={[styles.progressBarFill, { width: `${(equipmentTotal / (totalExpenses || 1)) * 100}%`, backgroundColor: '#2196f3' }]} />
+
+            {/* Materials */}
+            <View style={styles.breakdownItem}>
+              <View style={styles.breakdownHeader}>
+                <Text style={styles.breakdownName}>{t.materialsInputs}</Text>
+                <Text style={styles.breakdownVal}>₹{materialTotal.toFixed(0)}</Text>
+              </View>
+              <View style={styles.progressBarBg}>
+                <View style={[styles.progressBarFill, { width: `${(materialTotal / (totalExpenses || 1)) * 100}%`, backgroundColor: '#4caf50' }]} />
+              </View>
+            </View>
+
+            {/* Equipment */}
+            <View style={styles.breakdownItem}>
+              <View style={styles.breakdownHeader}>
+                <Text style={styles.breakdownName}>{t.equipmentFuel}</Text>
+                <Text style={styles.breakdownVal}>₹{equipmentTotal.toFixed(0)}</Text>
+              </View>
+              <View style={styles.progressBarBg}>
+                <View style={[styles.progressBarFill, { width: `${(equipmentTotal / (totalExpenses || 1)) * 100}%`, backgroundColor: '#2196f3' }]} />
+              </View>
             </View>
           </View>
         </View>
-      </View>
 
-      {/* Quick Action Navigation Buttons */}
-      <View style={styles.quickActions}>
-        <TouchableOpacity style={styles.actionBtn} onPress={() => onNavigateToTab('Crops')}>
-          <Text style={styles.actionBtnIcon}>🌿</Text>
-          <Text style={styles.actionBtnText}>{t.addCrop}</Text>
-        </TouchableOpacity>
-        <TouchableOpacity style={styles.actionBtn} onPress={() => onNavigateToTab('Activities')}>
-          <Text style={styles.actionBtnIcon}>📝</Text>
-          <Text style={styles.actionBtnText}>{t.logWork}</Text>
-        </TouchableOpacity>
-        <TouchableOpacity style={styles.actionBtn} onPress={() => onNavigateToTab('Pesticides')}>
-          <Text style={styles.actionBtnIcon}>🧪</Text>
-          <Text style={styles.actionBtnText}>{t.sprayLog}</Text>
-        </TouchableOpacity>
-      </View>
+        {/* Crop Operations List Header */}
+        <View style={styles.cropListHeaderContainer}>
+          <Text style={styles.cropListTitle}>{language === 'ml' ? 'വിളവുകളുടെ വിവരങ്ങൾ' : 'My Crop Cycles'}</Text>
+          <TouchableOpacity style={styles.quickAddBtn} onPress={() => setShowAddModal(true)}>
+            <Text style={styles.quickAddBtnText}>➕ {t.addCrop}</Text>
+          </TouchableOpacity>
+        </View>
 
-      {/* Cost By Crop Section */}
-      <View style={styles.sectionHeaderContainer}>
-        <Text style={styles.sectionTitle}>{t.activeCropExpenses}</Text>
-        <Text style={styles.sectionSub}>{t.costsAccumulated}</Text>
-      </View>
+        {/* Search Bar */}
+        <View style={styles.searchBarContainer}>
+          <TextInput
+            style={styles.searchInput}
+            placeholder={t.searchCrops}
+            value={searchQuery}
+            onChangeText={setSearchQuery}
+          />
+        </View>
 
-      <ScrollView horizontal={true} showsHorizontalScrollIndicator={false} style={styles.horizontalScroll}>
-        {cropExpenses.length === 0 ? (
-          <View style={styles.emptyCard}>
-            <Text style={styles.emptyText}>{t.noCropsFound}</Text>
-          </View>
-        ) : (
-          cropExpenses.map(crop => (
-            <TouchableOpacity key={crop.id} style={styles.cropExpenseCard} onPress={() => onSelectCrop(crop)}>
-              <View style={styles.cropCardTop}>
-                <Text style={styles.cropTypeName}>{crop.type}</Text>
-                <View style={[styles.stageBadge, { backgroundColor: getStageColor(crop.stage) }]}>
-                  <Text style={styles.stageText}>{translateStage(crop.stage, language)}</Text>
+        {/* Stage Filters Row */}
+        <View style={styles.filterContainer}>
+          <ScrollView horizontal={true} showsHorizontalScrollIndicator={false}>
+            <TouchableOpacity
+              style={[styles.filterChip, filterStage === 'All' && styles.filterChipActive]}
+              onPress={() => setFilterStage('All')}
+            >
+              <Text style={[styles.filterChipText, filterStage === 'All' && styles.filterChipTextActive]}>
+                {language === 'ml' ? 'എല്ലാം' : 'All'}
+              </Text>
+            </TouchableOpacity>
+            {STAGES.map((stg) => (
+              <TouchableOpacity
+                key={stg}
+                style={[styles.filterChip, filterStage === stg && styles.filterChipActive]}
+                onPress={() => setFilterStage(stg)}
+              >
+                <Text style={[styles.filterChipText, filterStage === stg && styles.filterChipTextActive]}>
+                  {translateStage(stg, language)}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </ScrollView>
+        </View>
+
+        {/* Crop Vertical List */}
+        <View style={styles.cropListContainer}>
+          {filteredCrops.length === 0 ? (
+            <View style={styles.emptyList}>
+              <Text style={styles.emptyListText}>{t.noCropsFound}</Text>
+            </View>
+          ) : (
+            filteredCrops.map((crop) => {
+              const cost = workLogs
+                .filter(w => w.cropId === crop.id)
+                .reduce((sum, w) => sum + w.totalCost, 0);
+              const revenue = workLogs
+                .filter(w => w.cropId === crop.id)
+                .reduce((sum, w) => sum + (w.income || 0), 0);
+              const profit = revenue - cost;
+
+              return (
+                <TouchableOpacity key={crop.id} style={styles.cropListItem} onPress={() => onSelectCrop(crop)}>
+                  <View style={styles.cropListItemLeft}>
+                    <Text style={styles.listItemType}>{crop.type} ({crop.variety})</Text>
+                    <Text style={styles.listItemName}>{crop.name}</Text>
+                    <Text style={styles.listItemField}>📍 {crop.field}</Text>
+                  </View>
+                  <View style={styles.cropListItemRight}>
+                    <View style={[styles.listItemStage, { backgroundColor: getStageColor(crop.stage) }]}>
+                      <Text style={styles.listItemStageText}>{translateStage(crop.stage, language)}</Text>
+                    </View>
+                    <Text style={[styles.listItemExpense, { color: profit >= 0 ? '#2e7d32' : '#ff5252' }]}>
+                      {profit >= 0 ? '+' : ''}₹{profit.toFixed(0)}
+                    </Text>
+                  </View>
+                </TouchableOpacity>
+              );
+            })
+          )}
+        </View>
+
+        {/* Spending by Activity Chart */}
+        <View style={styles.sectionHeaderContainer}>
+          <Text style={styles.sectionTitle}>{t.spendingByActivity}</Text>
+          <Text style={styles.sectionSub}>{t.comparingCosts}</Text>
+        </View>
+
+        <View style={styles.chartCard}>
+          {activityCosts.length === 0 ? (
+            <Text style={styles.emptyListText}>{t.noActivitiesLogged}</Text>
+          ) : (
+            activityCosts.map(act => (
+              <View key={act.name} style={styles.chartRow}>
+                <Text style={styles.chartLabel} numberOfLines={1}>{translateActivity(act.name, language)}</Text>
+                <View style={styles.chartBarWrapper}>
+                  <View style={[styles.chartBar, { width: `${(act.cost / maxActivityCost) * 100}%` }]}>
+                    <Text style={styles.chartBarValue}>₹{act.cost.toFixed(0)}</Text>
+                  </View>
                 </View>
               </View>
-              <Text style={styles.cropCardName} numberOfLines={1}>{crop.name}</Text>
-              <Text style={styles.cropCardLocation}>{crop.field}</Text>
-              <View style={styles.cropCardDivider} />
-              <View style={styles.cropCardBottom}>
-                <Text style={styles.spentLabel}>{t.spent}:</Text>
-                <Text style={styles.spentValue}>₹{crop.cost.toFixed(2)}</Text>
-              </View>
-            </TouchableOpacity>
-          ))
-        )}
+            ))
+          )}
+        </View>
+
       </ScrollView>
 
-      {/* Activity Cost Chart */}
-      <View style={styles.sectionHeaderContainer}>
-        <Text style={styles.sectionTitle}>{t.spendingByActivity}</Text>
-        <Text style={styles.sectionSub}>{t.comparingCosts}</Text>
-      </View>
+      {/* Add Crop Modal */}
+      <Modal visible={showAddModal} animationType="slide" transparent={true}>
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <Text style={styles.modalTitle}>{t.registerNewCrop}</Text>
+            
+            <ScrollView style={styles.modalForm}>
+              <Text style={styles.inputLabel}>{t.cropNameLabel}</Text>
+              <TextInput style={styles.input} placeholder={language === 'ml' ? 'ഉദാ: കിഴക്കേ പറമ്പ് കുരുമുളക്' : 'e.g. East Field Pepper'} value={name} onChangeText={setName} />
+              
+              <Text style={styles.inputLabel}>{t.cropTypeLabel}</Text>
+              <TextInput style={styles.input} placeholder={language === 'ml' ? 'ഉദാ: കുരുമുളക്, ഏലം' : 'e.g. Pepper, Cardamom'} value={type} onChangeText={setType} />
+              
+              <Text style={styles.inputLabel}>{t.varietyLabel}</Text>
+              <TextInput style={styles.input} placeholder={language === 'ml' ? 'ഉദാ: പന്നിയൂർ-1, ഞള്ളാനി' : 'e.g. Panniyur-1, NJallani'} value={variety} onChangeText={setVariety} />
+              
+              <Text style={styles.inputLabel}>{t.fieldLocationLabel}</Text>
+              <TextInput style={styles.input} placeholder={language === 'ml' ? 'ഉദാ: പ്ലോട്ട് എ, ചരിവ് പ്രദേശം' : 'e.g. Plot A, Slope Area'} value={field} onChangeText={setField} />
+              
+              <Text style={styles.inputLabel}>{t.plantingDateLabel}</Text>
+              <TextInput style={styles.input} value={plantingDate} onChangeText={setPlantingDate} />
 
-      <View style={styles.chartCard}>
-        {activityCosts.length === 0 ? (
-          <Text style={styles.emptyText}>{t.noActivitiesLogged}</Text>
-        ) : (
-          activityCosts.map(act => (
-            <View key={act.name} style={styles.chartRow}>
-              <Text style={styles.chartLabel} numberOfLines={1}>{translateActivity(act.name, language)}</Text>
-              <View style={styles.chartBarWrapper}>
-                <View style={[styles.chartBar, { width: `${(act.cost / maxActivityCost) * 100}%` }]}>
-                  <Text style={styles.chartBarValue}>₹{act.cost.toFixed(0)}</Text>
-                </View>
-              </View>
+              <Text style={styles.inputLabel}>{t.expectedHarvestLabel}</Text>
+              <TextInput style={styles.input} placeholder="YYYY-MM-DD" value={expectedHarvestDate} onChangeText={setExpectedHarvestDate} />
+
+              <Text style={styles.inputLabel}>{t.notes}</Text>
+              <TextInput style={[styles.input, styles.textArea]} multiline={true} placeholder={language === 'ml' ? 'കുറിപ്പുകൾ...' : 'Growth notes...'} value={notes} onChangeText={setNotes} />
+            </ScrollView>
+
+            <View style={styles.modalActions}>
+              <TouchableOpacity style={[styles.modalBtn, styles.cancelBtn]} onPress={() => setShowAddModal(false)}>
+                <Text style={styles.cancelBtnText}>{t.cancel}</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={[styles.modalBtn, styles.saveBtn]} onPress={handleSubmit}>
+                <Text style={styles.saveBtnText}>{t.saveCrop}</Text>
+              </TouchableOpacity>
             </View>
-          ))
-        )}
-      </View>
-    </ScrollView>
+          </View>
+        </View>
+      </Modal>
+    </View>
   );
 }
 
@@ -225,9 +425,6 @@ const styles = StyleSheet.create({
     flex: 1,
     paddingRight: 8,
   },
-  boldText: {
-    fontWeight: '700',
-  },
   badge: {
     backgroundColor: '#dc3545',
     paddingHorizontal: 8,
@@ -255,12 +452,6 @@ const styles = StyleSheet.create({
     fontSize: 11,
     fontWeight: '700',
     letterSpacing: 1.2,
-  },
-  totalValue: {
-    color: '#ffffff',
-    fontSize: 32,
-    fontWeight: '800',
-    marginVertical: 10,
   },
   breakdownContainer: {
     marginTop: 15,
@@ -295,37 +486,9 @@ const styles = StyleSheet.create({
     height: '100%',
     borderRadius: 3,
   },
-  quickActions: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginBottom: 25,
-  },
-  actionBtn: {
-    backgroundColor: '#ffffff',
-    flex: 1,
-    marginHorizontal: 4,
-    borderRadius: 12,
-    paddingVertical: 14,
-    alignItems: 'center',
-    justifyContent: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.05,
-    shadowRadius: 3,
-    elevation: 1,
-  },
-  actionBtnIcon: {
-    fontSize: 22,
-    marginBottom: 4,
-  },
-  actionBtnText: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: '#1b3a1e',
-  },
   sectionHeaderContainer: {
     marginBottom: 10,
-    marginTop: 5,
+    marginTop: 25,
   },
   sectionTitle: {
     fontSize: 18,
@@ -336,87 +499,131 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: '#6e8070',
   },
-  horizontalScroll: {
-    marginBottom: 25,
-    paddingBottom: 5,
+  cropListHeaderContainer: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginTop: 15,
+    marginBottom: 10,
   },
-  cropExpenseCard: {
+  cropListTitle: {
+    fontSize: 18,
+    fontWeight: '800',
+    color: '#1b3a1e',
+  },
+  quickAddBtn: {
+    backgroundColor: '#1b3a1e',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 8,
+  },
+  quickAddBtnText: {
+    color: '#fff',
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  searchBarContainer: {
     backgroundColor: '#ffffff',
-    width: 200,
-    borderRadius: 14,
-    padding: 16,
-    marginRight: 12,
+    borderRadius: 10,
+    padding: 2,
+    marginBottom: 10,
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
+    shadowOffset: { width: 0, height: 1 },
     shadowOpacity: 0.05,
-    shadowRadius: 3,
+    shadowRadius: 2,
     elevation: 1,
   },
-  cropCardTop: {
+  searchInput: {
+    backgroundColor: '#ffffff',
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    fontSize: 14,
+  },
+  filterContainer: {
+    marginBottom: 15,
+  },
+  filterChip: {
+    paddingHorizontal: 14,
+    paddingVertical: 6,
+    borderRadius: 16,
+    backgroundColor: '#e2e8e2',
+    marginRight: 8,
+  },
+  filterChipActive: {
+    backgroundColor: '#1b3a1e',
+  },
+  filterChipText: {
+    fontSize: 12,
+    color: '#556b2f',
+    fontWeight: '600',
+  },
+  filterChipTextActive: {
+    color: '#ffffff',
+  },
+  cropListContainer: {
+    marginBottom: 10,
+  },
+  cropListItem: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 8,
+    backgroundColor: '#ffffff',
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 12,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 2,
+    elevation: 1,
   },
-  cropTypeName: {
+  cropListItemLeft: {
+    flex: 1,
+    paddingRight: 10,
+  },
+  listItemType: {
     fontSize: 11,
     fontWeight: '700',
-    textTransform: 'uppercase',
     color: '#6e8070',
+    textTransform: 'uppercase',
   },
-  stageBadge: {
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: 10,
-  },
-  stageText: {
-    color: '#fff',
-    fontSize: 9,
-    fontWeight: '700',
-  },
-  cropCardName: {
-    fontSize: 14,
+  listItemName: {
+    fontSize: 16,
     fontWeight: '700',
     color: '#1b3a1e',
-    marginBottom: 2,
+    marginVertical: 4,
   },
-  cropCardLocation: {
-    fontSize: 11,
+  listItemField: {
+    fontSize: 12,
     color: '#7f8c8d',
   },
-  cropCardDivider: {
-    height: 0.5,
-    backgroundColor: '#e2e8e2',
-    marginVertical: 10,
-  },
-  cropCardBottom: {
-    flexDirection: 'row',
+  cropListItemRight: {
+    alignItems: 'flex-end',
     justifyContent: 'space-between',
   },
-  spentLabel: {
-    fontSize: 11,
-    color: '#7f8c8d',
+  listItemStage: {
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 10,
   },
-  spentValue: {
-    fontSize: 13,
+  listItemStageText: {
+    color: '#ffffff',
+    fontSize: 10,
     fontWeight: '700',
-    color: '#2e7d32',
   },
-  emptyCard: {
-    backgroundColor: '#ffffff',
-    padding: 20,
-    borderRadius: 12,
-    width: 200,
+  listItemExpense: {
+    fontSize: 15,
+    fontWeight: '700',
+  },
+  emptyList: {
+    padding: 40,
     alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 1,
-    borderColor: '#e2e8e2',
-    borderStyle: 'dashed',
+    backgroundColor: '#ffffff',
+    borderRadius: 12,
   },
-  emptyText: {
-    color: '#6e8070',
-    fontSize: 12,
-    textAlign: 'center',
+  emptyListText: {
+    color: '#95a5a6',
+    fontSize: 14,
   },
   chartCard: {
     backgroundColor: '#ffffff',
@@ -457,6 +664,107 @@ const styles = StyleSheet.create({
   chartBarValue: {
     color: '#fff',
     fontSize: 9,
+    fontWeight: '700',
+  },
+  financialRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginBottom: 5,
+  },
+  financialCol: {
+    flex: 1,
+  },
+  financialValue: {
+    color: '#ffffff',
+    fontSize: 22,
+    fontWeight: '800',
+    marginTop: 4,
+  },
+  profitDivider: {
+    height: 0.5,
+    backgroundColor: 'rgba(255, 255, 255, 0.2)',
+    marginVertical: 12,
+  },
+  profitRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  profitLabel: {
+    color: '#c2dbbe',
+    fontSize: 12,
+    fontWeight: '700',
+    letterSpacing: 1.2,
+  },
+  profitValueText: {
+    fontSize: 24,
+    fontWeight: '800',
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'flex-end',
+  },
+  modalContent: {
+    backgroundColor: '#ffffff',
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    padding: 20,
+    maxHeight: '90%',
+  },
+  modalTitle: {
+    fontSize: 18,
+    fontWeight: '800',
+    color: '#1b3a1e',
+    marginBottom: 15,
+  },
+  modalForm: {
+    marginBottom: 15,
+  },
+  inputLabel: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#6e8070',
+    marginTop: 10,
+    marginBottom: 4,
+  },
+  input: {
+    backgroundColor: '#f1f5f1',
+    borderRadius: 10,
+    padding: 10,
+    fontSize: 14,
+    color: '#333',
+  },
+  textArea: {
+    height: 80,
+    textAlignVertical: 'top',
+  },
+  modalActions: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    paddingTop: 10,
+    borderTopWidth: 0.5,
+    borderTopColor: '#e2e8e2',
+  },
+  modalBtn: {
+    flex: 1,
+    paddingVertical: 14,
+    borderRadius: 12,
+    alignItems: 'center',
+    marginHorizontal: 5,
+  },
+  cancelBtn: {
+    backgroundColor: '#f1f5f1',
+  },
+  cancelBtnText: {
+    color: '#6e8070',
+    fontWeight: '700',
+  },
+  saveBtn: {
+    backgroundColor: '#1b3a1e',
+  },
+  saveBtnText: {
+    color: '#ffffff',
     fontWeight: '700',
   },
 });

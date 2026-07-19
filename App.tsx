@@ -21,8 +21,6 @@ import {
 
 import Dashboard from './src/components/Dashboard';
 import CropsTab from './src/components/CropsTab';
-import ActivitiesTab from './src/components/ActivitiesTab';
-import PesticidesTab from './src/components/PesticidesTab';
 
 const LANGUAGE_STORAGE_KEY = 'crop_monitor_language_v1';
 
@@ -36,15 +34,8 @@ export default function App() {
   // Language State
   const [language, setLanguage] = useState<Language>('en');
 
-  // Navigation state: 'Dashboard' | 'Crops' | 'Activities' | 'Pesticides'
-  const [activeTab, setActiveTab] = useState<string>('Dashboard');
-  
   // Selection state for drilling down into a crop's details
   const [selectedCrop, setSelectedCrop] = useState<Crop | null>(null);
-
-  // State to handle quick-actions from crop details
-  const [preselectedCropIdForWork, setPreselectedCropIdForWork] = useState<string | null>(null);
-  const [preselectedCropIdForSpray, setPreselectedCropIdForSpray] = useState<string | null>(null);
 
   // Load data & language on start
   useEffect(() => {
@@ -128,84 +119,40 @@ export default function App() {
     await refreshAllData();
   };
 
-  // Navigation quick links from Dashboard/Details
-  const handleSelectCropAndView = (crop: Crop) => {
-    setSelectedCrop(crop);
-    setActiveTab('Crops');
-  };
-
-  const handleOpenLogWorkFromCrop = (cropId: string) => {
-    setPreselectedCropIdForWork(cropId);
-    setActiveTab('Activities');
-  };
-
-  const handleOpenSprayFromCrop = (cropId: string) => {
-    setPreselectedCropIdForSpray(cropId);
-    setActiveTab('Pesticides');
-  };
-
   const t = TRANSLATIONS[language];
 
-  // Render correct tab content
+  // Render content in single page flow (Dashboard/Crops list -> Crop Details)
   const renderContent = () => {
-    switch (activeTab) {
-      case 'Dashboard':
-        return (
-          <Dashboard
-            crops={crops}
-            workLogs={workLogs}
-            pesticideLogs={pesticideLogs}
-            onNavigateToTab={(tab) => {
-              setActiveTab(tab);
-              setSelectedCrop(null);
-            }}
-            onSelectCrop={handleSelectCropAndView}
-            language={language}
-          />
-        );
-      case 'Crops':
-        return (
-          <CropsTab
-            crops={crops}
-            workLogs={workLogs}
-            pesticideLogs={pesticideLogs}
-            onAddCrop={handleAddCrop}
-            onUpdateCrop={handleUpdateCrop}
-            onDeleteCrop={handleDeleteCrop}
-            selectedCrop={selectedCrop}
-            onSelectCrop={setSelectedCrop}
-            onOpenLogWorkModal={handleOpenLogWorkFromCrop}
-            onOpenSprayModal={handleOpenSprayFromCrop}
-            language={language}
-          />
-        );
-      case 'Activities':
-        return (
-          <ActivitiesTab
-            crops={crops}
-            workLogs={workLogs}
-            onAddWorkLog={handleAddWorkLog}
-            onDeleteWorkLog={handleDeleteWorkLog}
-            preselectedCropId={preselectedCropIdForWork}
-            onClosePreselection={() => setPreselectedCropIdForWork(null)}
-            language={language}
-          />
-        );
-      case 'Pesticides':
-        return (
-          <PesticidesTab
-            crops={crops}
-            pesticideLogs={pesticideLogs}
-            onAddPesticideLog={handleAddPesticideLog}
-            onDeletePesticideLog={handleDeletePesticideLog}
-            preselectedCropId={preselectedCropIdForSpray}
-            onClosePreselection={() => setPreselectedCropIdForSpray(null)}
-            language={language}
-          />
-        );
-      default:
-        return null;
+    if (selectedCrop) {
+      return (
+        <CropsTab
+          crops={crops}
+          workLogs={workLogs}
+          pesticideLogs={pesticideLogs}
+          onAddCrop={handleAddCrop}
+          onUpdateCrop={handleUpdateCrop}
+          onDeleteCrop={handleDeleteCrop}
+          selectedCrop={selectedCrop}
+          onSelectCrop={setSelectedCrop}
+          onAddWorkLog={handleAddWorkLog}
+          onDeleteWorkLog={handleDeleteWorkLog}
+          onAddPesticideLog={handleAddPesticideLog}
+          onDeletePesticideLog={handleDeletePesticideLog}
+          language={language}
+        />
+      );
     }
+
+    return (
+      <Dashboard
+        crops={crops}
+        workLogs={workLogs}
+        pesticideLogs={pesticideLogs}
+        onSelectCrop={setSelectedCrop}
+        onAddCrop={handleAddCrop}
+        language={language}
+      />
+    );
   };
 
   if (isLoading) {
@@ -243,53 +190,6 @@ export default function App() {
       {/* App Content */}
       <View style={styles.mainContainer}>
         {renderContent()}
-      </View>
-
-      {/* Premium Bottom Tab Navigation */}
-      <View style={styles.tabBar}>
-        <TouchableOpacity
-          style={[styles.tabItem, activeTab === 'Dashboard' && styles.tabItemActive]}
-          onPress={() => {
-            setActiveTab('Dashboard');
-            setSelectedCrop(null);
-          }}
-        >
-          <Text style={styles.tabIcon}>📊</Text>
-          <Text style={[styles.tabLabel, activeTab === 'Dashboard' && styles.tabLabelActive]}>{t.overview}</Text>
-        </TouchableOpacity>
-
-        <TouchableOpacity
-          style={[styles.tabItem, activeTab === 'Crops' && styles.tabItemActive]}
-          onPress={() => {
-            setActiveTab('Crops');
-            setSelectedCrop(null);
-          }}
-        >
-          <Text style={styles.tabIcon}>🌿</Text>
-          <Text style={[styles.tabLabel, activeTab === 'Crops' && styles.tabLabelActive]}>{t.crops}</Text>
-        </TouchableOpacity>
-
-        <TouchableOpacity
-          style={[styles.tabItem, activeTab === 'Activities' && styles.tabItemActive]}
-          onPress={() => {
-            setActiveTab('Activities');
-            setSelectedCrop(null);
-          }}
-        >
-          <Text style={styles.tabIcon}>🚜</Text>
-          <Text style={[styles.tabLabel, activeTab === 'Activities' && styles.tabLabelActive]}>{t.activities}</Text>
-        </TouchableOpacity>
-
-        <TouchableOpacity
-          style={[styles.tabItem, activeTab === 'Pesticides' && styles.tabItemActive]}
-          onPress={() => {
-            setActiveTab('Pesticides');
-            setSelectedCrop(null);
-          }}
-        >
-          <Text style={styles.tabIcon}>🧪</Text>
-          <Text style={[styles.tabLabel, activeTab === 'Pesticides' && styles.tabLabelActive]}>{t.chemicals}</Text>
-        </TouchableOpacity>
       </View>
     </SafeAreaView>
   );

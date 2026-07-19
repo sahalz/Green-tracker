@@ -12,12 +12,18 @@ interface CropsTabProps {
   onDeleteCrop: (id: string) => Promise<any>;
   selectedCrop: Crop | null;
   onSelectCrop: (crop: Crop | null) => void;
-  onOpenLogWorkModal: (cropId: string) => void;
-  onOpenSprayModal: (cropId: string) => void;
+  onAddWorkLog: (log: Omit<WorkLog, 'id' | 'totalCost'>) => Promise<any>;
+  onDeleteWorkLog: (id: string) => Promise<any>;
+  onAddPesticideLog: (log: Omit<PesticideLog, 'id'>) => Promise<any>;
+  onDeletePesticideLog: (id: string) => Promise<any>;
   language: Language;
 }
 
 const STAGES: CropStage[] = ['Seedling', 'Vegetative', 'Flowering', 'Fruiting', 'Harvested', 'Archived'];
+const ACTIVITIES = [
+  'Tillage', 'Planting', 'Weeding', 'Irrigation', 'Pruning', 'Spraying', 'Harvesting',
+  'Adding Manure', 'Vine Tying', 'Shade Regulation', 'Trashing', 'Curing', 'Other'
+];
 
 export default function CropsTab({
   crops,
@@ -28,68 +34,100 @@ export default function CropsTab({
   onDeleteCrop,
   selectedCrop,
   onSelectCrop,
-  onOpenLogWorkModal,
-  onOpenSprayModal,
+  onAddWorkLog,
+  onDeleteWorkLog,
+  onAddPesticideLog,
+  onDeletePesticideLog,
   language,
 }: CropsTabProps) {
   const t = TRANSLATIONS[language];
 
-  // Navigation & UI States
-  const [showAddModal, setShowAddModal] = useState(false);
-  const [filterStage, setFilterStage] = useState<string>('All');
-  const [searchQuery, setSearchQuery] = useState('');
+  // Work Log Form States
+  const [showWorkLogModal, setShowWorkLogModal] = useState(false);
+  const [workActivity, setWorkActivity] = useState<string>('');
 
-  // Form Fields
-  const [name, setName] = useState('');
-  const [type, setType] = useState('');
-  const [variety, setVariety] = useState('');
-  const [field, setField] = useState('');
-  const [plantingDate, setPlantingDate] = useState(new Date().toISOString().split('T')[0]);
-  const [expectedHarvestDate, setExpectedHarvestDate] = useState('');
-  const [notes, setNotes] = useState('');
+  const isHarvesting = workActivity.trim().toLowerCase().includes('harvest') || 
+                       workActivity.trim().includes('വിളവെടുപ്പ്') || 
+                       workActivity.trim().includes('വിളവെടുക്');
+  
+  const [workWorkers, setWorkWorkers] = useState<string>('');
+  const [workLaborCostPerWorker, setWorkLaborCostPerWorker] = useState<string>('');
+  const [workDate, setWorkDate] = useState<string>(new Date().toISOString().split('T')[0]);
+  const [workNotes, setWorkNotes] = useState<string>('');
+  const [workYield, setWorkYield] = useState<string>('');
+  const [workIncome, setWorkIncome] = useState<string>('');
 
-  // Submit new crop
-  const handleSubmit = async () => {
-    if (!name || !type || !field) {
-      Alert.alert(
-        language === 'ml' ? 'അപൂർണ്ണമായ വിവരങ്ങൾ' : 'Missing Fields',
-        language === 'ml' ? 'പേര്, വിളയുടെ ഇനം, കൃഷിസ്ഥലം എന്നിവ പൂരിപ്പിക്കുക.' : 'Please fill in Name, Crop Type, and Field Location.'
-      );
-      return;
+  // Input Selection Modal State
+  const [showInputChoiceModal, setShowInputChoiceModal] = useState(false);
+
+  // Dedicated Manure Log Form States
+  const [showManureLogModal, setShowManureLogModal] = useState(false);
+  const [manureLogName, setManureLogName] = useState<string>('');
+  const [manureLogQty, setManureLogQty] = useState<string>('');
+  const [manureLogCost, setManureLogCost] = useState<string>('0');
+  const [manureLogWorkers, setManureLogWorkers] = useState<string>('');
+  const [manureLogLaborCost, setManureLogLaborCost] = useState<string>('');
+  const [manureLogDate, setManureLogDate] = useState<string>(new Date().toISOString().split('T')[0]);
+  const [manureLogNotes, setManureLogNotes] = useState<string>('');
+
+  // Spray Log Form States
+  const [showSprayLogModal, setShowSprayLogModal] = useState(false);
+  const [sprayPesticideName, setSprayPesticideName] = useState<string>('');
+  const [sprayTargetPest, setSprayTargetPest] = useState<string>('');
+  const [sprayActiveIngredient, setSprayActiveIngredient] = useState<string>('');
+  const [sprayDosage, setSprayDosage] = useState<string>('');
+  const [sprayQuantity, setSprayQuantity] = useState<string>('');
+  const [sprayDate, setSprayDate] = useState<string>(new Date().toISOString().split('T')[0]);
+  const [sprayWithholdingDays, setSprayWithholdingDays] = useState<string>('');
+  const [sprayReentryHours, setSprayReentryHours] = useState<string>('');
+  const [sprayWorkers, setSprayWorkers] = useState<string>('');
+  const [sprayLaborCostPerWorker, setSprayLaborCostPerWorker] = useState<string>('');
+  const [sprayPesticideCost, setSprayPesticideCost] = useState<string>('');
+
+  // Earnings Form States
+  const [showEarningsModal, setShowEarningsModal] = useState(false);
+  const [earningsItem, setEarningsItem] = useState<string>('');
+  const [earningsQuantity, setEarningsQuantity] = useState<string>('');
+  const [earningsPricePerKg, setEarningsPricePerKg] = useState<string>('');
+  const [earningsDate, setEarningsDate] = useState<string>(new Date().toISOString().split('T')[0]);
+  const [earningsNotes, setEarningsNotes] = useState<string>('');
+
+  if (!selectedCrop) return null;
+
+  const cropWorkLogs = workLogs.filter(w => w.cropId === selectedCrop.id);
+  const cropPestLogs = pesticideLogs.filter(p => (p.cropIds || []).includes(selectedCrop.id));
+
+  const laborCost = cropWorkLogs.reduce((sum, l) => sum + l.laborCost, 0);
+  const materialCost = cropWorkLogs.reduce((sum, l) => sum + l.materialCost, 0);
+  const equipmentCost = cropWorkLogs.reduce((sum, l) => sum + l.equipmentCost, 0);
+  const totalCost = laborCost + materialCost + equipmentCost;
+  
+  const totalRevenue = cropWorkLogs.reduce((sum, l) => sum + (l.income || 0), 0);
+  const netProfit = totalRevenue - totalCost;
+
+  // Calculate withholding warning for this crop
+  let withholdingDaysLeft = 0;
+  let warningPesticideName = '';
+  const todayTime = new Date(new Date().toISOString().split('T')[0]).getTime();
+  
+  cropPestLogs.forEach(pest => {
+    if (pest.withholdingDays && pest.withholdingDays > 0) {
+      const sprayTime = new Date(pest.date).getTime();
+      const daysPassed = (todayTime - sprayTime) / (1000 * 60 * 60 * 24);
+      const daysLeft = Math.ceil(pest.withholdingDays - daysPassed);
+      if (daysLeft > 0 && daysLeft > withholdingDaysLeft) {
+        withholdingDaysLeft = daysLeft;
+        warningPesticideName = pest.pesticideName;
+      }
     }
-    const cropData: Omit<Crop, 'id'> = {
-      name,
-      type,
-      variety,
-      field,
-      plantingDate,
-      expectedHarvestDate: expectedHarvestDate || new Date(Date.now() + 90 * 24 * 60 * 60 * 1000).toISOString().split('T')[0], // default 90 days
-      stage: 'Seedling',
-      notes,
-    };
-    await onAddCrop(cropData);
-    setShowAddModal(false);
-    // Reset Form
-    setName('');
-    setType('');
-    setVariety('');
-    setField('');
-    setPlantingDate(new Date().toISOString().split('T')[0]);
-    setExpectedHarvestDate('');
-    setNotes('');
-  };
+  });
 
-  // Change stage
   const handleStageChange = async (newStage: CropStage) => {
-    if (!selectedCrop) return;
     const updated: Crop = { ...selectedCrop, stage: newStage };
     await onUpdateCrop(updated);
-    onSelectCrop(updated); // Refresh view
   };
 
-  // Handle delete
   const handleDelete = () => {
-    if (!selectedCrop) return;
     Alert.alert(
       language === 'ml' ? 'വിവരങ്ങൾ ഒഴിവാക്കണോ?' : 'Delete Crop',
       language === 'ml' 
@@ -109,31 +147,215 @@ export default function CropsTab({
     );
   };
 
-  // Filter crops
-  const filteredCrops = crops.filter(crop => {
-    const matchesSearch = crop.name.toLowerCase().includes(searchQuery.toLowerCase()) || 
-                          crop.type.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                          crop.field.toLowerCase().includes(searchQuery.toLowerCase());
-    const matchesStage = filterStage === 'All' || crop.stage === filterStage;
-    return matchesSearch && matchesStage;
-  });
+  const handleAddWorkLogSubmit = async () => {
+    if (!workActivity.trim()) {
+      Alert.alert(
+        language === 'ml' ? 'അപൂർണ്ണമായ വിവരങ്ങൾ' : 'Missing Fields',
+        language === 'ml' ? 'ജോലിയുടെ ഇനം നൽകുക.' : 'Please enter the activity type.'
+      );
+      return;
+    }
+    if (!workWorkers || !workLaborCostPerWorker) {
+      Alert.alert(
+        language === 'ml' ? 'അപൂർണ്ണമായ വിവരങ്ങൾ' : 'Missing Fields',
+        language === 'ml' ? 'തൊഴിലാളികളുടെ എണ്ണവും കൂലിയും നൽകുക.' : 'Please enter number of workers and labor cost per worker.'
+      );
+      return;
+    }
+    const workersNum = Number(workWorkers) || 0;
+    const costPerWorkerNum = Number(workLaborCostPerWorker) || 0;
+    const calculatedLaborCost = workersNum * costPerWorkerNum;
 
-  // Render Crop Detail View
-  if (selectedCrop) {
-    const cropWorkLogs = workLogs.filter(w => w.cropId === selectedCrop.id);
-    const cropPestLogs = pesticideLogs.filter(p => (p.cropIds || []).includes(selectedCrop.id));
+    const logData = {
+      cropId: selectedCrop.id,
+      activityType: workActivity.trim(),
+      date: workDate,
+      durationMinutes: 0,
+      laborCost: calculatedLaborCost,
+      materialCost: 0,
+      equipmentCost: 0,
+      notes: workNotes,
+      noOfWorkers: workersNum,
+      laborCostPerWorker: costPerWorkerNum,
+      manureName: undefined,
+      yieldKg: isHarvesting ? (Number(workYield) || undefined) : undefined,
+      income: isHarvesting ? (Number(workIncome) || undefined) : undefined,
+    };
 
-    const laborCost = cropWorkLogs.reduce((sum, l) => sum + l.laborCost, 0);
-    const materialCost = cropWorkLogs.reduce((sum, l) => sum + l.materialCost, 0);
-    const equipmentCost = cropWorkLogs.reduce((sum, l) => sum + l.equipmentCost, 0);
-    const totalCost = laborCost + materialCost + equipmentCost;
+    await onAddWorkLog(logData);
+    setShowWorkLogModal(false);
+    
+    // Reset work form
+    setWorkActivity('');
+    setWorkWorkers('');
+    setWorkLaborCostPerWorker('');
+    setWorkDate(new Date().toISOString().split('T')[0]);
+    setWorkNotes('');
+    setWorkYield('');
+    setWorkIncome('');
+  };
 
-    return (
+  const handleAddManureLogSubmit = async () => {
+    if (!manureLogName.trim() || !manureLogQty || !manureLogWorkers || !manureLogLaborCost) {
+      Alert.alert(
+        language === 'ml' ? 'അപൂർണ്ണമായ വിവരങ്ങൾ' : 'Missing Fields',
+        language === 'ml' ? 'വളത്തിന്റെ പേര്, അളവ്, തൊഴിലാളികൾ, കൂലി എന്നിവ നൽകുക.' : 'Please enter manure name, quantity, workers, and labor cost per worker.'
+      );
+      return;
+    }
+
+    const workersNum = Number(manureLogWorkers) || 0;
+    const costPerWorkerNum = Number(manureLogLaborCost) || 0;
+    const calculatedLaborCost = workersNum * costPerWorkerNum;
+    const materialCostNum = Number(manureLogCost) || 0;
+    const qtyNum = Number(manureLogQty) || 0;
+
+    const logData = {
+      cropId: selectedCrop.id,
+      activityType: 'Adding Manure',
+      date: manureLogDate,
+      durationMinutes: 0,
+      laborCost: calculatedLaborCost,
+      materialCost: materialCostNum,
+      equipmentCost: 0,
+      notes: manureLogNotes.trim(),
+      manureName: manureLogName.trim(),
+      yieldKg: qtyNum,
+      income: undefined,
+      noOfWorkers: workersNum,
+      laborCostPerWorker: costPerWorkerNum,
+    };
+
+    await onAddWorkLog(logData);
+    setShowManureLogModal(false);
+
+    // Reset manure log form
+    setManureLogName('');
+    setManureLogQty('');
+    setManureLogCost('0');
+    setManureLogWorkers('');
+    setManureLogLaborCost('');
+    setManureLogDate(new Date().toISOString().split('T')[0]);
+    setManureLogNotes('');
+  };
+
+  const handleAddSprayLogSubmit = async () => {
+    if (!sprayPesticideName) {
+      Alert.alert(
+        language === 'ml' ? 'അപൂർണ്ണമായ വിവരങ്ങൾ' : 'Missing Fields',
+        language === 'ml' ? 'കീടനാശിനിയുടെ പേര് നൽകുക.' : 'Please enter pesticide name.'
+      );
+      return;
+    }
+
+    const workersNum = Number(sprayWorkers) || 0;
+    const costPerWorkerNum = Number(sprayLaborCostPerWorker) || 0;
+    const pesticideCostNum = Number(sprayPesticideCost) || 0;
+
+    const logData = {
+      cropIds: [selectedCrop.id],
+      pesticideName: sprayPesticideName,
+      dosage: sprayDosage,
+      appliedQuantity: sprayQuantity,
+      date: sprayDate,
+      targetPest: sprayTargetPest.trim() || undefined,
+      activeIngredient: sprayActiveIngredient.trim() || undefined,
+      reentryHours: Number(sprayReentryHours) || undefined,
+      withholdingDays: Number(sprayWithholdingDays) || undefined,
+      cost: pesticideCostNum,
+      noOfWorkers: workersNum,
+      laborCostPerWorker: costPerWorkerNum,
+    };
+
+    await onAddPesticideLog(logData);
+    setShowSprayLogModal(false);
+
+    // Reset spray form
+    setSprayPesticideName('');
+    setSprayTargetPest('');
+    setSprayActiveIngredient('');
+    setSprayDosage('');
+    setSprayQuantity('');
+    setSprayDate(new Date().toISOString().split('T')[0]);
+    setSprayWithholdingDays('');
+    setSprayReentryHours('');
+    setSprayWorkers('');
+    setSprayLaborCostPerWorker('');
+    setSprayPesticideCost('');
+  };
+
+  const handleAddEarningsSubmit = async () => {
+    if (!earningsItem.trim() || !earningsQuantity || !earningsPricePerKg) {
+      Alert.alert(
+        language === 'ml' ? 'അപൂർണ്ണമായ വിവരങ്ങൾ' : 'Missing Fields',
+        language === 'ml' ? 'ഉൽപ്പന്നം, അളവ്, കിലോ വില എന്നിവ പൂരിപ്പിക്കുക.' : 'Please enter item, quantity, and price per kg.'
+      );
+      return;
+    }
+
+    const qty = Number(earningsQuantity) || 0;
+    const rate = Number(earningsPricePerKg) || 0;
+    const calculatedIncome = qty * rate;
+
+    const logData = {
+      cropId: selectedCrop.id,
+      activityType: 'Revenue',
+      date: earningsDate,
+      durationMinutes: 0,
+      laborCost: 0,
+      materialCost: 0,
+      equipmentCost: 0,
+      notes: earningsNotes.trim(),
+      manureName: earningsItem.trim(),
+      yieldKg: qty,
+      income: calculatedIncome,
+      pricePerKg: rate,
+    };
+
+    await onAddWorkLog(logData);
+    setShowEarningsModal(false);
+
+    // Reset earnings form
+    setEarningsItem('');
+    setEarningsQuantity('');
+    setEarningsPricePerKg('');
+    setEarningsNotes('');
+    setEarningsDate(new Date().toISOString().split('T')[0]);
+  };
+
+  // Dynamic calculations for preview in UI
+  const liveWorkTotalLaborCost = (Number(workWorkers) || 0) * (Number(workLaborCostPerWorker) || 0);
+  
+  const liveSprayLaborCost = (Number(sprayWorkers) || 0) * (Number(sprayLaborCostPerWorker) || 0);
+  const liveSprayTotalCost = liveSprayLaborCost + (Number(sprayPesticideCost) || 0);
+
+  const liveEarningsTotalAmount = (Number(earningsQuantity) || 0) * (Number(earningsPricePerKg) || 0);
+
+  const liveManureLaborCost = (Number(manureLogWorkers) || 0) * (Number(manureLogLaborCost) || 0);
+  const liveManureTotalCost = liveManureLaborCost + (Number(manureLogCost) || 0);
+
+  return (
+    <View style={styles.container}>
       <ScrollView style={styles.container} contentContainerStyle={styles.content}>
         {/* Back Button */}
         <TouchableOpacity style={styles.backButton} onPress={() => onSelectCrop(null)}>
           <Text style={styles.backButtonText}>{t.backToList}</Text>
         </TouchableOpacity>
+
+        {/* Safety Withholding Warning Banner */}
+        {withholdingDaysLeft > 0 && (
+          <View style={styles.withholdingAlertCard}>
+            <Text style={styles.withholdingAlertTitle}>
+              {language === 'ml' ? '⚠️ വിളവെടുപ്പ് വിലക്ക് നിലവിലുണ്ട്!' : '⚠️ HARVEST WITHHOLDING ACTIVE!'}
+            </Text>
+            <Text style={styles.withholdingAlertText}>
+              {language === 'ml' 
+                ? `${warningPesticideName} ഉപയോഗിച്ചതിനാൽ അടുത്ത ${withholdingDaysLeft} ദിവസത്തേക്ക് വിളവെടുക്കരുത്.` 
+                : `Sprayed with ${warningPesticideName}. Do not harvest for the next ${withholdingDaysLeft} days.`
+              }
+            </Text>
+          </View>
+        )}
 
         {/* Header Block */}
         <View style={styles.detailHeaderCard}>
@@ -179,34 +401,56 @@ export default function CropsTab({
           })}
         </ScrollView>
 
-        {/* Crop Expense Breakdown */}
+        {/* Crop Financial Ledger */}
         <View style={styles.expenseSummaryCard}>
-          <Text style={styles.expenseSummaryTitle}>{t.cumulativeExpenses}</Text>
-          <Text style={styles.expenseSummaryVal}>₹{totalCost.toLocaleString('en-US', { minimumFractionDigits: 2 })}</Text>
+          <View style={styles.ledgerHeaderRow}>
+            <View style={styles.ledgerHeaderCol}>
+              <Text style={styles.expenseSummaryTitle}>{t.totalExpenses}</Text>
+              <Text style={styles.expenseSummaryVal}>₹{totalCost.toLocaleString('en-US', { maximumFractionDigits: 0 })}</Text>
+            </View>
+            <View style={styles.ledgerHeaderCol}>
+              <Text style={styles.expenseSummaryTitle}>{t.revenue}</Text>
+              <Text style={styles.expenseSummaryVal}>₹{totalRevenue.toLocaleString('en-US', { maximumFractionDigits: 0 })}</Text>
+            </View>
+          </View>
           
+          <View style={styles.ledgerDivider} />
+          
+          <View style={styles.ledgerProfitRow}>
+            <Text style={styles.ledgerProfitLabel}>{t.profit}</Text>
+            <Text style={[styles.ledgerProfitValue, { color: netProfit >= 0 ? '#2e7d32' : '#ff5252' }]}>
+              ₹{netProfit.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+            </Text>
+          </View>
+
+          <View style={styles.ledgerDivider} />
+
           <View style={styles.expenseSummaryBreakdown}>
             <View style={styles.breakdownCol}>
               <Text style={styles.breakdownLabel}>👨‍🌾 {t.laborCost}</Text>
-              <Text style={styles.breakdownVal}>₹{laborCost.toFixed(2)}</Text>
+              <Text style={styles.breakdownSubVal}>₹{laborCost.toFixed(0)}</Text>
             </View>
             <View style={styles.breakdownCol}>
-              <Text style={styles.breakdownLabel}>🌱 {language === 'ml' ? 'സാധനങ്ങൾ' : 'Materials'}</Text>
-              <Text style={styles.breakdownVal}>₹{materialCost.toFixed(2)}</Text>
+              <Text style={styles.breakdownLabel}>🌱 {language === 'ml' ? 'വസ്തുക്കൾ' : 'Materials'}</Text>
+              <Text style={styles.breakdownSubVal}>₹{materialCost.toFixed(0)}</Text>
             </View>
             <View style={styles.breakdownCol}>
               <Text style={styles.breakdownLabel}>🚜 {language === 'ml' ? 'ഉപകരണങ്ങൾ' : 'Equip/Fuel'}</Text>
-              <Text style={styles.breakdownVal}>₹{equipmentCost.toFixed(2)}</Text>
+              <Text style={styles.breakdownSubVal}>₹{equipmentCost.toFixed(0)}</Text>
             </View>
           </View>
         </View>
 
-        {/* Direct Log Quick actions */}
+        {/* Direct Log Actions */}
         <View style={styles.detailActionsRow}>
-          <TouchableOpacity style={styles.detailActionBtn} onPress={() => onOpenLogWorkModal(selectedCrop.id)}>
+          <TouchableOpacity style={styles.detailActionBtn} onPress={() => setShowWorkLogModal(true)}>
             <Text style={styles.detailActionBtnText}>➕ {t.logWork}</Text>
           </TouchableOpacity>
-          <TouchableOpacity style={[styles.detailActionBtn, { backgroundColor: '#4caf50' }]} onPress={() => onOpenSprayModal(selectedCrop.id)}>
-            <Text style={styles.detailActionBtnText}>🧪 {t.sprayLog}</Text>
+          <TouchableOpacity style={[styles.detailActionBtn, { backgroundColor: '#4caf50' }]} onPress={() => setShowInputChoiceModal(true)}>
+            <Text style={styles.detailActionBtnText}>🧪 {t.sprayOrManure}</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={[styles.detailActionBtn, { backgroundColor: '#2e7d32' }]} onPress={() => setShowEarningsModal(true)}>
+            <Text style={styles.detailActionBtnText}>💰 {t.addEarnings}</Text>
           </TouchableOpacity>
         </View>
 
@@ -226,28 +470,67 @@ export default function CropsTab({
                     <Text style={styles.timelineActivity}>
                       {log.activityType === 'Adding Manure' && log.manureName
                         ? `${translateActivity(log.activityType, language)} (${log.manureName})`
+                        : log.activityType === 'Revenue' && log.manureName
+                        ? `${translateActivity(log.activityType, language)} (${log.manureName})`
                         : translateActivity(log.activityType, language)
                       }
                     </Text>
-                    <Text style={styles.timelineCost}>₹{log.totalCost.toFixed(2)}</Text>
+                    <Text style={[styles.timelineCost, log.activityType === 'Revenue' && { color: '#2e7d32' }]}>
+                      {log.activityType === 'Revenue' ? '+' : ''}₹{log.activityType === 'Revenue' ? log.income?.toFixed(0) : log.totalCost.toFixed(0)}
+                    </Text>
                   </View>
-                  <Text style={styles.timelineDate}>
-                    {log.date}
-                    {log.activityType !== 'Adding Manure' && ` • ${log.durationMinutes} mins`}
-                  </Text>
+                  <Text style={styles.timelineDate}>{log.date}</Text>
                   {log.notes ? <Text style={styles.timelineNotes}>{log.notes}</Text> : null}
                   
-                  {/* Detailed expense breakdown in timeline */}
-                  <Text style={styles.timelineMiniBreakdown}>
-                    {t.laborCost}: ₹{log.laborCost} | {language === 'ml' ? 'വസ്തുക്കൾ' : 'Mat'}: ₹{log.materialCost} | {language === 'ml' ? 'ഉപകരണങ്ങൾ' : 'Equip'}: ₹{log.equipmentCost}
-                  </Text>
+                  {log.activityType === 'Harvesting' && (log.yieldKg || log.income) ? (
+                    <View style={styles.timelineHarvestDetails}>
+                      {log.yieldKg ? (
+                        <Text style={styles.timelineHarvestText}>📦 {t.yieldKg}: {log.yieldKg} kg</Text>
+                      ) : null}
+                      {log.income ? (
+                        <Text style={styles.timelineHarvestText}>💰 {t.income}: ₹{log.income.toFixed(0)}</Text>
+                      ) : null}
+                    </View>
+                  ) : null}
+
+                  {log.activityType === 'Revenue' && (log.yieldKg || log.income) ? (
+                    <View style={[styles.timelineHarvestDetails, { backgroundColor: '#e8f5e9', borderColor: '#c8e6c9' }]}>
+                      {log.yieldKg ? (
+                        <Text style={[styles.timelineHarvestText, { color: '#2e7d32' }]}>📦 {t.quantitySold}: {log.yieldKg} kg</Text>
+                      ) : null}
+                      {log.pricePerKg ? (
+                        <Text style={[styles.timelineHarvestText, { color: '#2e7d32' }]}>🏷️ {t.pricePerKg}: ₹{log.pricePerKg}/kg</Text>
+                      ) : null}
+                    </View>
+                  ) : null}
+
+                  {log.activityType === 'Adding Manure' && log.yieldKg ? (
+                    <View style={[styles.timelineHarvestDetails, { backgroundColor: '#efebe9', borderColor: '#d7ccc8' }]}>
+                      <Text style={[styles.timelineHarvestText, { color: '#5d4037' }]}>📦 {t.manureQuantity}: {log.yieldKg} kg</Text>
+                    </View>
+                  ) : null}
+
+                  <View style={styles.timelineBreakdownRow}>
+                    {log.noOfWorkers ? (
+                      <Text style={styles.timelineMiniBreakdown}>
+                        👨‍🌾 {t.noOfWorkers}: {log.noOfWorkers} (₹{log.laborCostPerWorker}/worker)
+                      </Text>
+                    ) : (
+                      <Text style={styles.timelineMiniBreakdown}>
+                        {t.laborCost}: ₹{log.laborCost} | {language === 'ml' ? 'സാധനങ്ങൾ' : 'Mat'}: ₹{log.materialCost}
+                      </Text>
+                    )}
+                    <TouchableOpacity style={styles.miniDeleteBtn} onPress={() => onDeleteWorkLog(log.id)}>
+                      <Text style={styles.miniDeleteBtnText}>{language === 'ml' ? 'ഡിലീറ്റ്' : 'Delete'}</Text>
+                    </TouchableOpacity>
+                  </View>
                 </View>
               </View>
             ))}
           </View>
         )}
 
-        {/* Pesticide logs */}
+        {/* Pesticide Logs */}
         {cropPestLogs.length > 0 && (
           <>
             <Text style={styles.sectionTitle}>{t.pesticideApplications}</Text>
@@ -266,124 +549,466 @@ export default function CropsTab({
                     <Text style={styles.pestGridLabel}>{language === 'ml' ? 'ലായനിയുടെ അളവ്' : 'QUANTITY MIXED'}</Text>
                     <Text style={styles.pestGridVal}>{pest.appliedQuantity || 'Not specified'}</Text>
                   </View>
+                  {pest.targetPest ? (
+                    <View style={styles.pestGridItem}>
+                      <Text style={styles.pestGridLabel}>{language === 'ml' ? 'രോഗം / കീടം' : 'TARGET PEST'}</Text>
+                      <Text style={styles.pestGridVal}>{pest.targetPest}</Text>
+                    </View>
+                  ) : null}
+                  {pest.noOfWorkers ? (
+                    <View style={styles.pestGridItem}>
+                      <Text style={styles.pestGridLabel}>👨‍🌾 {t.noOfWorkers}</Text>
+                      <Text style={styles.pestGridVal}>{pest.noOfWorkers} (₹{pest.laborCostPerWorker}/worker)</Text>
+                    </View>
+                  ) : null}
+                  {pest.cost ? (
+                    <View style={styles.pestGridItem}>
+                      <Text style={styles.pestGridLabel}>{t.pesticideCost}</Text>
+                      <Text style={styles.pestGridVal}>₹{pest.cost}</Text>
+                    </View>
+                  ) : null}
+                  {pest.reentryHours ? (
+                    <View style={styles.pestGridItem}>
+                      <Text style={styles.pestGridLabel}>{language === 'ml' ? 'പ്രവേശന വിലക്ക്' : 'RE-ENTRY'}</Text>
+                      <Text style={styles.pestGridVal}>{pest.reentryHours} {language === 'ml' ? 'മണിക്കൂർ' : 'Hours'}</Text>
+                    </View>
+                  ) : null}
+                  {pest.withholdingDays ? (
+                    <View style={styles.pestGridItem}>
+                      <Text style={styles.pestGridLabel}>{language === 'ml' ? 'വിളവെടുപ്പ് വിലക്ക്' : 'WITHHOLDING'}</Text>
+                      <Text style={[styles.pestGridVal, { color: '#dc3545', fontWeight: '700' }]}>{pest.withholdingDays} {language === 'ml' ? 'ദിവസം' : 'Days'}</Text>
+                    </View>
+                  ) : null}
                 </View>
+                <TouchableOpacity style={styles.miniDeleteBtn} onPress={() => onDeletePesticideLog(pest.id)}>
+                  <Text style={styles.miniDeleteBtnText}>{language === 'ml' ? 'ഒഴിവാക്കുക' : 'Delete Spray'}</Text>
+                </TouchableOpacity>
               </View>
             ))}
           </>
         )}
 
-        {/* Delete button */}
+        {/* Delete crop cycle */}
         <TouchableOpacity style={styles.deleteBtn} onPress={handleDelete}>
           <Text style={styles.deleteBtnText}>{t.deleteCropCycle}</Text>
         </TouchableOpacity>
       </ScrollView>
-    );
-  }
 
-  // Render Crop List View
-  return (
-    <View style={styles.container}>
-      {/* Search & Filter Section */}
-      <View style={styles.searchBarContainer}>
-        <TextInput
-          style={styles.searchInput}
-          placeholder={t.searchCrops}
-          value={searchQuery}
-          onChangeText={setSearchQuery}
-        />
-      </View>
-
-      {/* Stage Filters Row */}
-      <View style={styles.filterContainer}>
-        <ScrollView horizontal={true} showsHorizontalScrollIndicator={false}>
-          <TouchableOpacity
-            style={[styles.filterChip, filterStage === 'All' && styles.filterChipActive]}
-            onPress={() => setFilterStage('All')}
-          >
-            <Text style={[styles.filterChipText, filterStage === 'All' && styles.filterChipTextActive]}>{language === 'ml' ? 'എല്ലാം' : 'All'}</Text>
-          </TouchableOpacity>
-          {STAGES.map((stg) => (
-            <TouchableOpacity
-              key={stg}
-              style={[styles.filterChip, filterStage === stg && styles.filterChipActive]}
-              onPress={() => setFilterStage(stg)}
-            >
-              <Text style={[styles.filterChipText, filterStage === stg && styles.filterChipTextActive]}>{translateStage(stg, language)}</Text>
-            </TouchableOpacity>
-          ))}
-        </ScrollView>
-      </View>
-
-      <ScrollView contentContainerStyle={styles.listContent}>
-        {/* New Crop Button */}
-        <TouchableOpacity style={styles.addBtn} onPress={() => setShowAddModal(true)}>
-          <Text style={styles.addBtnText}>➕ {t.registerNewCrop}</Text>
-        </TouchableOpacity>
-
-        {filteredCrops.length === 0 ? (
-          <View style={styles.emptyList}>
-            <Text style={styles.emptyListText}>{t.noCropsFound}</Text>
-          </View>
-        ) : (
-          filteredCrops.map((crop) => {
-            const cost = workLogs
-              .filter(w => w.cropId === crop.id)
-              .reduce((sum, w) => sum + w.totalCost, 0);
-
-            return (
-              <TouchableOpacity key={crop.id} style={styles.cropListItem} onPress={() => onSelectCrop(crop)}>
-                <View style={styles.cropListItemLeft}>
-                  <Text style={styles.listItemType}>{crop.type} ({crop.variety})</Text>
-                  <Text style={styles.listItemName}>{crop.name}</Text>
-                  <Text style={styles.listItemField}>📍 {crop.field}</Text>
-                </View>
-                <View style={styles.cropListItemRight}>
-                  <View style={[styles.listItemStage, { backgroundColor: getStageColor(crop.stage) }]}>
-                    <Text style={styles.listItemStageText}>{translateStage(crop.stage, language)}</Text>
-                  </View>
-                  <Text style={styles.listItemExpense}>₹{cost.toFixed(0)}</Text>
-                </View>
-              </TouchableOpacity>
-            );
-          })
-        )}
-      </ScrollView>
-
-      {/* Add Crop Modal */}
-      <Modal visible={showAddModal} animationType="slide" transparent={true}>
+      {/* Log Work Modal */}
+      <Modal visible={showWorkLogModal} animationType="slide" transparent={true}>
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
-            <Text style={styles.modalTitle}>{t.registerNewCrop}</Text>
+            <Text style={styles.modalTitle}>{t.logWork}</Text>
             
             <ScrollView style={styles.modalForm}>
-              <Text style={styles.inputLabel}>{t.cropNameLabel}</Text>
-              <TextInput style={styles.input} placeholder={language === 'ml' ? 'ഉദാ: കിഴക്കേ പറമ്പ് വരി 5' : 'e.g. East Field Row 5'} value={name} onChangeText={setName} />
-              
-              <Text style={styles.inputLabel}>{t.cropTypeLabel}</Text>
-              <TextInput style={styles.input} placeholder={language === 'ml' ? 'ഉദാ: തക്കാളി, പയർ, വാഴ' : 'e.g. Tomatoes, Bananas'} value={type} onChangeText={setType} />
-              
-              <Text style={styles.inputLabel}>{t.varietyLabel}</Text>
-              <TextInput style={styles.input} placeholder={language === 'ml' ? 'ഉദാ: റോമൻ റെഡ്, റോബസ്റ്റ' : 'e.g. Roma Red, Robusta'} value={variety} onChangeText={setVariety} />
-              
-              <Text style={styles.inputLabel}>{t.fieldLocationLabel}</Text>
-              <TextInput style={styles.input} placeholder={language === 'ml' ? 'ഉദാ: പ്ലോട്ട് എ, ഗ്രീൻഹൗസ് 1' : 'e.g. Plot A, Greenhouse 1'} value={field} onChangeText={setField} />
-              
-              <Text style={styles.inputLabel}>{t.plantingDateLabel}</Text>
-              <TextInput style={styles.input} value={plantingDate} onChangeText={setPlantingDate} />
+              <Text style={styles.inputLabel}>{language === 'ml' ? 'ജോലിയുടെ ഇനം *' : 'Activity Type *'}</Text>
+              <TextInput 
+                style={styles.input} 
+                placeholder={language === 'ml' ? 'ഉദാ: കളപറിക്കൽ, വള്ളി കെട്ടൽ, വിളവെടുപ്പ്' : 'e.g. Weeding, Vine Tying, Harvesting'} 
+                value={workActivity} 
+                onChangeText={setWorkActivity} 
+              />
 
-              <Text style={styles.inputLabel}>{t.expectedHarvestLabel}</Text>
-              <TextInput style={styles.input} placeholder="YYYY-MM-DD" value={expectedHarvestDate} onChangeText={setExpectedHarvestDate} />
+
+
+              {isHarvesting && (
+                <View style={styles.row}>
+                  <View style={styles.col}>
+                    <Text style={styles.inputLabel}>{t.yieldKg}</Text>
+                    <TextInput 
+                      style={styles.input} 
+                      keyboardType="numeric" 
+                      placeholder="e.g. 50" 
+                      value={workYield} 
+                      onChangeText={setWorkYield} 
+                    />
+                  </View>
+                  <View style={styles.col}>
+                    <Text style={styles.inputLabel}>{t.income}</Text>
+                    <TextInput 
+                      style={styles.input} 
+                      keyboardType="numeric" 
+                      placeholder="e.g. 15000" 
+                      value={workIncome} 
+                      onChangeText={setWorkIncome} 
+                    />
+                  </View>
+                </View>
+              )}
+
+              <View style={styles.row}>
+                <View style={styles.col}>
+                  <Text style={styles.inputLabel}>{t.noOfWorkers}</Text>
+                  <TextInput 
+                    style={styles.input} 
+                    keyboardType="numeric" 
+                    placeholder="e.g. 4" 
+                    value={workWorkers} 
+                    onChangeText={setWorkWorkers} 
+                  />
+                </View>
+                <View style={styles.col}>
+                  <Text style={styles.inputLabel}>{t.laborCostPerWorker}</Text>
+                  <TextInput 
+                    style={styles.input} 
+                    keyboardType="numeric" 
+                    placeholder="e.g. 600" 
+                    value={workLaborCostPerWorker} 
+                    onChangeText={setWorkLaborCostPerWorker} 
+                  />
+                </View>
+              </View>
+
+              {/* Auto Calculated Preview */}
+              <View style={styles.autoCalcBox}>
+                <Text style={styles.autoCalcLabel}>{t.totalLaborCost}</Text>
+                <Text style={styles.autoCalcVal}>₹{liveWorkTotalLaborCost.toLocaleString('en-US')}</Text>
+              </View>
+
+              <Text style={styles.inputLabel}>{t.date}</Text>
+              <TextInput style={styles.input} value={workDate} onChangeText={setWorkDate} />
 
               <Text style={styles.inputLabel}>{t.notes}</Text>
-              <TextInput style={[styles.input, styles.textArea]} multiline={true} placeholder={language === 'ml' ? 'കുറിപ്പുകൾ...' : 'Growth notes...'} value={notes} onChangeText={setNotes} />
+              <TextInput style={[styles.input, styles.textArea]} multiline={true} value={workNotes} onChangeText={setWorkNotes} />
             </ScrollView>
 
             <View style={styles.modalActions}>
-              <TouchableOpacity style={[styles.modalBtn, styles.cancelBtn]} onPress={() => setShowAddModal(false)}>
+              <TouchableOpacity style={[styles.modalBtn, styles.cancelBtn]} onPress={() => setShowWorkLogModal(false)}>
                 <Text style={styles.cancelBtnText}>{t.cancel}</Text>
               </TouchableOpacity>
-              <TouchableOpacity style={[styles.modalBtn, styles.saveBtn]} onPress={handleSubmit}>
-                <Text style={styles.saveBtnText}>{t.saveCrop}</Text>
+              <TouchableOpacity style={[styles.modalBtn, styles.saveBtn]} onPress={handleAddWorkLogSubmit}>
+                <Text style={styles.saveBtnText}>{t.logActivity}</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Spray Log Modal */}
+      <Modal visible={showSprayLogModal} animationType="slide" transparent={true}>
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <Text style={styles.modalTitle}>{t.sprayLog}</Text>
+            
+            <ScrollView style={styles.modalForm}>
+              <Text style={styles.inputLabel}>{t.pesticideProductName}</Text>
+              <TextInput 
+                style={styles.input} 
+                placeholder="e.g. Copper Fungicide, Neem Oil" 
+                value={sprayPesticideName} 
+                onChangeText={setSprayPesticideName} 
+              />
+
+              <View style={styles.row}>
+                <View style={styles.col}>
+                  <Text style={styles.inputLabel}>{t.targetPest}</Text>
+                  <TextInput 
+                    style={styles.input} 
+                    placeholder="e.g. Thrips, Wilt" 
+                    value={sprayTargetPest} 
+                    onChangeText={setSprayTargetPest} 
+                  />
+                </View>
+                <View style={styles.col}>
+                  <Text style={styles.inputLabel}>{t.activeIngredient}</Text>
+                  <TextInput 
+                    style={styles.input} 
+                    placeholder="e.g. Copper" 
+                    value={sprayActiveIngredient} 
+                    onChangeText={setSprayActiveIngredient} 
+                  />
+                </View>
+              </View>
+
+              <View style={styles.row}>
+                <View style={styles.col}>
+                  <Text style={styles.inputLabel}>{t.dosageRate}</Text>
+                  <TextInput 
+                    style={styles.input} 
+                    placeholder="e.g. 15ml / Litre" 
+                    value={sprayDosage} 
+                    onChangeText={setSprayDosage} 
+                  />
+                </View>
+                <View style={styles.col}>
+                  <Text style={styles.inputLabel}>{language === 'ml' ? 'ലായനിയുടെ അളവ്' : 'Quantity Mixed'}</Text>
+                  <TextInput 
+                    style={styles.input} 
+                    placeholder="e.g. 20 Litres" 
+                    value={sprayQuantity} 
+                    onChangeText={setSprayQuantity} 
+                  />
+                </View>
+              </View>
+
+              <View style={styles.row}>
+                <View style={styles.col}>
+                  <Text style={styles.inputLabel}>{t.reentryHours}</Text>
+                  <TextInput 
+                    style={styles.input} 
+                    keyboardType="numeric"
+                    placeholder="e.g. 24" 
+                    value={sprayReentryHours} 
+                    onChangeText={setSprayReentryHours} 
+                  />
+                </View>
+                <View style={styles.col}>
+                  <Text style={styles.inputLabel}>{t.withholdingDays}</Text>
+                  <TextInput 
+                    style={styles.input} 
+                    keyboardType="numeric"
+                    placeholder="e.g. 7" 
+                    value={sprayWithholdingDays} 
+                    onChangeText={setSprayWithholdingDays} 
+                  />
+                </View>
+              </View>
+
+              <View style={styles.row}>
+                <View style={styles.col}>
+                  <Text style={styles.inputLabel}>{t.noOfWorkers}</Text>
+                  <TextInput 
+                    style={styles.input} 
+                    keyboardType="numeric" 
+                    placeholder="e.g. 2" 
+                    value={sprayWorkers} 
+                    onChangeText={setSprayWorkers} 
+                  />
+                </View>
+                <View style={styles.col}>
+                  <Text style={styles.inputLabel}>{t.laborCostPerWorker}</Text>
+                  <TextInput 
+                    style={styles.input} 
+                    keyboardType="numeric" 
+                    placeholder="e.g. 600" 
+                    value={sprayLaborCostPerWorker} 
+                    onChangeText={setSprayLaborCostPerWorker} 
+                  />
+                </View>
+              </View>
+
+              <Text style={styles.inputLabel}>{t.pesticideCostLabel}</Text>
+              <TextInput 
+                style={styles.input} 
+                keyboardType="numeric"
+                placeholder="e.g. 800"
+                value={sprayPesticideCost} 
+                onChangeText={setSprayPesticideCost} 
+              />
+
+              {/* Auto Calculated Previews */}
+              <View style={styles.autoCalcBox}>
+                <Text style={styles.autoCalcLabel}>{t.totalLaborCost}</Text>
+                <Text style={styles.autoCalcVal}>₹{liveSprayLaborCost.toLocaleString('en-US')}</Text>
+              </View>
+              
+              <View style={[styles.autoCalcBox, { backgroundColor: '#e8f5e9', borderColor: '#c8e6c9' }]}>
+                <Text style={[styles.autoCalcLabel, { color: '#2e7d32' }]}>{language === 'ml' ? 'ആകെ കണക്കാക്കിയ ചിലവ്' : 'Estimated Total Cost'}</Text>
+                <Text style={[styles.autoCalcVal, { color: '#2e7d32' }]}>₹{liveSprayTotalCost.toLocaleString('en-US')}</Text>
+              </View>
+              <Text style={styles.helperText}>{t.pesticideHelper}</Text>
+
+              <Text style={styles.inputLabel}>{t.date}</Text>
+              <TextInput style={styles.input} value={sprayDate} onChangeText={setSprayDate} />
+            </ScrollView>
+
+            <View style={styles.modalActions}>
+              <TouchableOpacity style={[styles.modalBtn, styles.cancelBtn]} onPress={() => setShowSprayLogModal(false)}>
+                <Text style={styles.cancelBtnText}>{t.cancel}</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={[styles.modalBtn, styles.saveBtn]} onPress={handleAddSprayLogSubmit}>
+                <Text style={styles.saveBtnText}>{t.recordSprayBtn}</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Record Earnings Modal */}
+      <Modal visible={showEarningsModal} animationType="slide" transparent={true}>
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <Text style={styles.modalTitle}>{t.addEarnings}</Text>
+            
+            <ScrollView style={styles.modalForm}>
+              <Text style={styles.inputLabel}>{t.sellingItem}</Text>
+              <TextInput 
+                style={styles.input} 
+                placeholder={language === 'ml' ? 'ഉദാ: കുരുമുളക് വിറ്റത്, ഉണക്ക ഏലക്ക' : 'e.g. Black Pepper, Green Cardamom'} 
+                value={earningsItem} 
+                onChangeText={setEarningsItem} 
+              />
+
+              <View style={styles.row}>
+                <View style={styles.col}>
+                  <Text style={styles.inputLabel}>{t.quantitySold}</Text>
+                  <TextInput 
+                    style={styles.input} 
+                    keyboardType="numeric" 
+                    placeholder="e.g. 50" 
+                    value={earningsQuantity} 
+                    onChangeText={setEarningsQuantity} 
+                  />
+                </View>
+                <View style={styles.col}>
+                  <Text style={styles.inputLabel}>{t.pricePerKg}</Text>
+                  <TextInput 
+                    style={styles.input} 
+                    keyboardType="numeric" 
+                    placeholder="e.g. 600" 
+                    value={earningsPricePerKg} 
+                    onChangeText={setEarningsPricePerKg} 
+                  />
+                </View>
+              </View>
+
+              {/* Auto Calculated Preview */}
+              <View style={[styles.autoCalcBox, { backgroundColor: '#e8f5e9', borderColor: '#c8e6c9' }]}>
+                <Text style={[styles.autoCalcLabel, { color: '#2e7d32' }]}>{t.totalAmount}</Text>
+                <Text style={[styles.autoCalcVal, { color: '#2e7d32' }]}>₹{liveEarningsTotalAmount.toLocaleString('en-US')}</Text>
+              </View>
+
+              <Text style={styles.inputLabel}>{t.date}</Text>
+              <TextInput style={styles.input} value={earningsDate} onChangeText={setEarningsDate} />
+
+              <Text style={styles.inputLabel}>{t.notes}</Text>
+              <TextInput style={[styles.input, styles.textArea]} multiline={true} value={earningsNotes} onChangeText={setEarningsNotes} />
+            </ScrollView>
+
+            <View style={styles.modalActions}>
+              <TouchableOpacity style={[styles.modalBtn, styles.cancelBtn]} onPress={() => setShowEarningsModal(false)}>
+                <Text style={styles.cancelBtnText}>{t.cancel}</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={[styles.modalBtn, styles.saveBtn, { backgroundColor: '#2e7d32' }]} onPress={handleAddEarningsSubmit}>
+                <Text style={styles.saveBtnText}>{t.addEarnings}</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Input Choice Modal */}
+      <Modal visible={showInputChoiceModal} animationType="fade" transparent={true}>
+        <View style={styles.choiceModalOverlay}>
+          <View style={styles.choiceModalContent}>
+            <Text style={styles.choiceModalTitle}>{t.selectInputType}</Text>
+            
+            <View style={styles.choiceButtonsRow}>
+              <TouchableOpacity 
+                style={[styles.choiceCard, { borderColor: '#4caf50' }]} 
+                onPress={() => {
+                  setShowInputChoiceModal(false);
+                  setShowSprayLogModal(true);
+                }}
+              >
+                <Text style={styles.choiceCardIcon}>🧪</Text>
+                <Text style={styles.choiceCardTitle}>{t.recordSprayMenu}</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity 
+                style={[styles.choiceCard, { borderColor: '#8d6e63' }]} 
+                onPress={() => {
+                  setShowInputChoiceModal(false);
+                  setShowManureLogModal(true);
+                }}
+              >
+                <Text style={styles.choiceCardIcon}>🍂</Text>
+                <Text style={styles.choiceCardTitle}>{t.recordManureMenu}</Text>
+              </TouchableOpacity>
+            </View>
+
+            <TouchableOpacity style={styles.choiceCancelBtn} onPress={() => setShowInputChoiceModal(false)}>
+              <Text style={styles.choiceCancelBtnText}>{t.cancel}</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Record Manure Modal */}
+      <Modal visible={showManureLogModal} animationType="slide" transparent={true}>
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <Text style={styles.modalTitle}>{t.recordManureMenu}</Text>
+            
+            <ScrollView style={styles.modalForm}>
+              <Text style={styles.inputLabel}>{t.manureNameLabel}</Text>
+              <TextInput 
+                style={styles.input} 
+                placeholder="e.g. Cow Dung, Compost" 
+                value={manureLogName} 
+                onChangeText={setManureLogName} 
+              />
+
+              <View style={styles.row}>
+                <View style={styles.col}>
+                  <Text style={styles.inputLabel}>{t.manureQuantity}</Text>
+                  <TextInput 
+                    style={styles.input} 
+                    keyboardType="numeric"
+                    placeholder="e.g. 100" 
+                    value={manureLogQty} 
+                    onChangeText={setManureLogQty} 
+                  />
+                </View>
+                <View style={styles.col}>
+                  <Text style={styles.inputLabel}>{t.manureCostLabel}</Text>
+                  <TextInput 
+                    style={styles.input} 
+                    keyboardType="numeric" 
+                    placeholder="e.g. 500" 
+                    value={manureLogCost} 
+                    onChangeText={setManureLogCost} 
+                  />
+                </View>
+              </View>
+
+              <View style={styles.row}>
+                <View style={styles.col}>
+                  <Text style={styles.inputLabel}>{t.noOfWorkers}</Text>
+                  <TextInput 
+                    style={styles.input} 
+                    keyboardType="numeric" 
+                    placeholder="e.g. 2" 
+                    value={manureLogWorkers} 
+                    onChangeText={setManureLogWorkers} 
+                  />
+                </View>
+                <View style={styles.col}>
+                  <Text style={styles.inputLabel}>{t.laborCostPerWorker}</Text>
+                  <TextInput 
+                    style={styles.input} 
+                    keyboardType="numeric" 
+                    placeholder="e.g. 600" 
+                    value={manureLogLaborCost} 
+                    onChangeText={setManureLogLaborCost} 
+                  />
+                </View>
+              </View>
+
+              {/* Auto Calculated Previews */}
+              <View style={styles.autoCalcBox}>
+                <Text style={styles.autoCalcLabel}>{t.totalLaborCost}</Text>
+                <Text style={styles.autoCalcVal}>₹{liveManureLaborCost.toLocaleString('en-US')}</Text>
+              </View>
+
+              <View style={[styles.autoCalcBox, { backgroundColor: '#e8f5e9', borderColor: '#c8e6c9' }]}>
+                <Text style={[styles.autoCalcLabel, { color: '#2e7d32' }]}>{t.estimatedTotal}</Text>
+                <Text style={[styles.autoCalcVal, { color: '#2e7d32' }]}>₹{liveManureTotalCost.toLocaleString('en-US')}</Text>
+              </View>
+
+              <Text style={styles.inputLabel}>{t.date}</Text>
+              <TextInput style={styles.input} value={manureLogDate} onChangeText={setManureLogDate} />
+
+              <Text style={styles.inputLabel}>{t.notes}</Text>
+              <TextInput style={[styles.input, styles.textArea]} multiline={true} value={manureLogNotes} onChangeText={setManureLogNotes} />
+            </ScrollView>
+
+            <View style={styles.modalActions}>
+              <TouchableOpacity style={[styles.modalBtn, styles.cancelBtn]} onPress={() => setShowManureLogModal(false)}>
+                <Text style={styles.cancelBtnText}>{t.cancel}</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={[styles.modalBtn, styles.saveBtn, { backgroundColor: '#8d6e63' }]} onPress={handleAddManureLogSubmit}>
+                <Text style={styles.saveBtnText}>{t.recordManureMenu}</Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -413,21 +1038,37 @@ const styles = StyleSheet.create({
     padding: 16,
     paddingBottom: 40,
   },
-  listContent: {
-    padding: 16,
-    paddingBottom: 40,
-  },
   backButton: {
-    marginBottom: 16,
+    paddingVertical: 10,
+    marginBottom: 10,
   },
   backButtonText: {
-    color: '#2e7d32',
-    fontWeight: '700',
+    color: '#1b3a1e',
     fontSize: 14,
+    fontWeight: '700',
+  },
+  withholdingAlertCard: {
+    backgroundColor: '#fde8e8',
+    borderWidth: 1,
+    borderColor: '#fbd5d5',
+    borderRadius: 12,
+    padding: 14,
+    marginBottom: 15,
+  },
+  withholdingAlertTitle: {
+    color: '#e53e3e',
+    fontSize: 13,
+    fontWeight: '800',
+    marginBottom: 4,
+  },
+  withholdingAlertText: {
+    color: '#c53030',
+    fontSize: 12,
+    fontWeight: '500',
   },
   detailHeaderCard: {
     backgroundColor: '#ffffff',
-    borderRadius: 14,
+    borderRadius: 16,
     padding: 20,
     marginBottom: 20,
     shadowColor: '#000',
@@ -437,27 +1078,28 @@ const styles = StyleSheet.create({
     elevation: 1,
   },
   detailType: {
-    fontSize: 12,
+    fontSize: 11,
     fontWeight: '700',
-    color: '#6e8070',
+    color: '#7f8c8d',
     textTransform: 'uppercase',
   },
   detailTitle: {
-    fontSize: 24,
+    fontSize: 22,
     fontWeight: '800',
     color: '#1b3a1e',
-    marginVertical: 4,
+    marginVertical: 6,
   },
   detailSub: {
-    fontSize: 14,
+    fontSize: 13,
     color: '#7f8c8d',
+    marginBottom: 15,
   },
   datesContainer: {
     flexDirection: 'row',
-    marginTop: 15,
-    paddingTop: 15,
-    borderTopWidth: 0.5,
-    borderTopColor: '#e2e8e2',
+    justifyContent: 'space-between',
+    backgroundColor: '#f9fbf9',
+    borderRadius: 10,
+    padding: 12,
   },
   dateBlock: {
     flex: 1,
@@ -468,17 +1110,17 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
   dateVal: {
-    fontSize: 14,
-    fontWeight: '600',
+    fontSize: 13,
     color: '#2c3e50',
+    fontWeight: '600',
     marginTop: 2,
   },
   notesText: {
+    fontSize: 12,
+    color: '#2c3e50',
+    fontStyle: 'italic',
     marginTop: 15,
-    fontSize: 13,
-    color: '#555',
-    lineHeight: 18,
-    backgroundColor: '#f1f8e9',
+    backgroundColor: '#f5f7f5',
     padding: 10,
     borderRadius: 8,
   },
@@ -486,101 +1128,28 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '700',
     color: '#1b3a1e',
-    marginTop: 10,
-    marginBottom: 12,
+    marginTop: 20,
+    marginBottom: 10,
   },
   stagePickerScroll: {
-    marginBottom: 20,
+    marginBottom: 15,
   },
   stagePickerItem: {
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 15,
     borderWidth: 1,
     borderColor: '#bdc3c7',
-    borderRadius: 20,
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    marginRight: 8,
     backgroundColor: '#ffffff',
+    marginRight: 8,
   },
   stagePickerText: {
     fontSize: 12,
-    color: '#555',
+    color: '#7f8c8d',
   },
   expenseSummaryCard: {
-    backgroundColor: '#1b3a1e',
-    borderRadius: 14,
-    padding: 20,
-    marginBottom: 20,
-    alignItems: 'center',
-  },
-  expenseSummaryTitle: {
-    color: '#c2dbbe',
-    fontSize: 10,
-    fontWeight: '700',
-    letterSpacing: 1,
-  },
-  expenseSummaryVal: {
-    color: '#ffffff',
-    fontSize: 28,
-    fontWeight: '800',
-    marginVertical: 8,
-  },
-  expenseSummaryBreakdown: {
-    flexDirection: 'row',
-    borderTopWidth: 0.5,
-    borderTopColor: 'rgba(255, 255, 255, 0.2)',
-    paddingTop: 12,
-    marginTop: 8,
-  },
-  breakdownCol: {
-    flex: 1,
-    alignItems: 'center',
-  },
-  breakdownLabel: {
-    color: '#e4f0e1',
-    fontSize: 11,
-    marginBottom: 4,
-  },
-  breakdownVal: {
-    color: '#ffffff',
-    fontWeight: '700',
-    fontSize: 13,
-  },
-  detailActionsRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginBottom: 20,
-  },
-  detailActionBtn: {
-    flex: 1,
-    backgroundColor: '#1b3a1e',
-    marginHorizontal: 4,
-    borderRadius: 10,
-    paddingVertical: 12,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  detailActionBtnText: {
-    color: '#ffffff',
-    fontSize: 11,
-    fontWeight: '700',
-  },
-  emptyLogsBox: {
     backgroundColor: '#ffffff',
-    borderRadius: 10,
-    padding: 16,
-    borderWidth: 1,
-    borderColor: '#e2e8e2',
-    borderStyle: 'dashed',
-    alignItems: 'center',
-    marginBottom: 20,
-  },
-  emptyLogsText: {
-    color: '#6e8070',
-    fontSize: 12,
-  },
-  timelineContainer: {
-    backgroundColor: '#ffffff',
-    borderRadius: 14,
+    borderRadius: 16,
     padding: 16,
     marginBottom: 20,
     shadowColor: '#000',
@@ -589,20 +1158,115 @@ const styles = StyleSheet.create({
     shadowRadius: 3,
     elevation: 1,
   },
-  timelineItem: {
+  ledgerHeaderRow: {
     flexDirection: 'row',
+    justifyContent: 'space-between',
+  },
+  ledgerHeaderCol: {
+    flex: 1,
+  },
+  expenseSummaryTitle: {
+    fontSize: 11,
+    color: '#7f8c8d',
+    fontWeight: '700',
+  },
+  expenseSummaryVal: {
+    fontSize: 20,
+    fontWeight: '800',
+    color: '#2c3e50',
+    marginTop: 4,
+  },
+  ledgerDivider: {
+    height: 0.5,
+    backgroundColor: '#e2e8e2',
+    marginVertical: 12,
+  },
+  ledgerProfitRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  ledgerProfitLabel: {
+    fontSize: 12,
+    color: '#2c3e50',
+    fontWeight: '700',
+  },
+  ledgerProfitValue: {
+    fontSize: 22,
+    fontWeight: '800',
+  },
+  expenseSummaryBreakdown: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+  },
+  breakdownCol: {
+    flex: 1,
+  },
+  breakdownLabel: {
+    fontSize: 10,
+    color: '#7f8c8d',
+    fontWeight: '700',
+  },
+  breakdownSubVal: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#2c3e50',
+    marginTop: 2,
+  },
+  detailActionsRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginVertical: 15,
+  },
+  detailActionBtn: {
+    flex: 1,
+    backgroundColor: '#1b3a1e',
+    borderRadius: 12,
+    paddingVertical: 14,
+    alignItems: 'center',
+    marginHorizontal: 5,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 2,
+    elevation: 1,
+  },
+  detailActionBtnText: {
+    color: '#ffffff',
+    fontWeight: '700',
+    fontSize: 13,
+  },
+  timelineContainer: {
+    borderLeftWidth: 2,
+    borderLeftColor: '#e2e8e2',
+    marginLeft: 8,
+    paddingLeft: 12,
+    marginBottom: 20,
+  },
+  timelineItem: {
     marginBottom: 16,
+    position: 'relative',
   },
   timelineDot: {
-    width: 10,
-    height: 10,
-    borderRadius: 5,
-    backgroundColor: '#2e7d32',
-    marginTop: 4,
-    marginRight: 12,
+    position: 'absolute',
+    left: -19,
+    top: 6,
+    width: 12,
+    height: 12,
+    borderRadius: 6,
+    backgroundColor: '#4caf50',
+    borderWidth: 2,
+    borderColor: '#ffffff',
   },
   timelineContent: {
-    flex: 1,
+    backgroundColor: '#ffffff',
+    borderRadius: 12,
+    padding: 12,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.03,
+    shadowRadius: 2,
+    elevation: 1,
   },
   timelineHeader: {
     flexDirection: 'row',
@@ -616,7 +1280,7 @@ const styles = StyleSheet.create({
   timelineCost: {
     fontSize: 14,
     fontWeight: '700',
-    color: '#2e7d32',
+    color: '#2c3e50',
   },
   timelineDate: {
     fontSize: 11,
@@ -626,28 +1290,63 @@ const styles = StyleSheet.create({
   timelineNotes: {
     fontSize: 12,
     color: '#555',
-    backgroundColor: '#f9f9f9',
+    backgroundColor: '#f9fbf9',
     padding: 6,
     borderRadius: 6,
-    marginTop: 4,
+    marginTop: 6,
+  },
+  timelineHarvestDetails: {
+    flexDirection: 'row',
+    backgroundColor: '#f1f8e9',
+    borderRadius: 6,
+    padding: 6,
+    marginTop: 6,
+  },
+  timelineHarvestText: {
+    fontSize: 10,
+    fontWeight: '600',
+    color: '#33691e',
+    marginRight: 10,
+  },
+  timelineBreakdownRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginTop: 6,
+    borderTopWidth: 0.5,
+    borderTopColor: '#f1f5f1',
+    paddingTop: 6,
   },
   timelineMiniBreakdown: {
-    fontSize: 9,
-    color: '#95a5a6',
-    marginTop: 4,
-    fontStyle: 'italic',
+    fontSize: 10,
+    color: '#7f8c8d',
+  },
+  miniDeleteBtn: {
+    padding: 4,
+  },
+  miniDeleteBtnText: {
+    fontSize: 10,
+    color: '#e53e3e',
+    fontWeight: '700',
   },
   pestLogCard: {
     backgroundColor: '#ffffff',
     borderRadius: 14,
-    padding: 16,
+    padding: 14,
     marginBottom: 12,
-    borderWidth: 0.5,
-    borderColor: '#e2e8e2',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 2,
+    elevation: 1,
   },
   pestLogHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
+    borderBottomWidth: 0.5,
+    borderBottomColor: '#f1f5f1',
+    paddingBottom: 6,
+    marginBottom: 8,
   },
   pestName: {
     fontSize: 14,
@@ -655,160 +1354,58 @@ const styles = StyleSheet.create({
     color: '#1b3a1e',
   },
   pestCost: {
-    fontSize: 14,
-    fontWeight: '700',
-    color: '#2e7d32',
-  },
-  pestSub: {
     fontSize: 11,
     color: '#7f8c8d',
-    marginVertical: 2,
   },
   pestGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    marginTop: 8,
-    borderTopWidth: 0.5,
-    borderTopColor: '#f1f1f1',
-    paddingTop: 8,
   },
   pestGridItem: {
     width: '50%',
-    marginVertical: 4,
+    marginBottom: 8,
   },
   pestGridLabel: {
     fontSize: 9,
-    color: '#95a5a6',
     fontWeight: '700',
+    color: '#7f8c8d',
   },
   pestGridVal: {
-    fontSize: 11,
+    fontSize: 12,
     fontWeight: '600',
-    color: '#34495e',
+    color: '#2c3e50',
     marginTop: 1,
   },
   deleteBtn: {
+    marginTop: 30,
     backgroundColor: '#fde8e8',
-    paddingVertical: 14,
     borderRadius: 12,
+    paddingVertical: 14,
     alignItems: 'center',
-    marginTop: 20,
+    borderWidth: 1,
+    borderColor: '#fbd5d5',
   },
   deleteBtnText: {
-    color: '#e53e3e',
+    color: '#c53030',
     fontWeight: '700',
     fontSize: 13,
   },
-  searchBarContainer: {
-    backgroundColor: '#ffffff',
-    padding: 12,
-    borderBottomWidth: 0.5,
-    borderBottomColor: '#e2e8e2',
-  },
-  searchInput: {
-    backgroundColor: '#f1f5f1',
-    borderRadius: 10,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    fontSize: 14,
-  },
-  filterContainer: {
-    paddingVertical: 10,
-    backgroundColor: '#ffffff',
-    borderBottomWidth: 0.5,
-    borderBottomColor: '#e2e8e2',
-    paddingHorizontal: 16,
-  },
-  filterChip: {
-    paddingHorizontal: 14,
-    paddingVertical: 6,
-    borderRadius: 16,
-    backgroundColor: '#f1f5f1',
-    marginRight: 8,
-  },
-  filterChipActive: {
-    backgroundColor: '#1b3a1e',
-  },
-  filterChipText: {
-    fontSize: 12,
-    color: '#6e8070',
-    fontWeight: '600',
-  },
-  filterChipTextActive: {
-    color: '#ffffff',
-  },
-  addBtn: {
-    backgroundColor: '#1b3a1e',
-    paddingVertical: 14,
-    borderRadius: 12,
-    alignItems: 'center',
-    marginBottom: 16,
-  },
-  addBtnText: {
-    color: '#ffffff',
-    fontWeight: '700',
-    fontSize: 14,
-  },
-  cropListItem: {
+  emptyLogsBox: {
+    padding: 30,
     backgroundColor: '#ffffff',
     borderRadius: 12,
-    padding: 16,
-    flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 10,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.05,
-    shadowRadius: 2,
-    elevation: 1,
   },
-  cropListItemLeft: {
-    flex: 1,
-    paddingRight: 10,
+  emptyLogsText: {
+    fontSize: 13,
+    color: '#95a5a6',
   },
-  listItemType: {
-    fontSize: 10,
-    fontWeight: '700',
-    color: '#7f8c8d',
-    textTransform: 'uppercase',
-  },
-  listItemName: {
+  pesticideApplications: {
     fontSize: 16,
     fontWeight: '700',
     color: '#1b3a1e',
-    marginVertical: 2,
-  },
-  listItemField: {
-    fontSize: 12,
-    color: '#6e8070',
-  },
-  cropListItemRight: {
-    alignItems: 'flex-end',
-  },
-  listItemStage: {
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 12,
-    marginBottom: 6,
-  },
-  listItemStageText: {
-    color: '#fff',
-    fontSize: 9,
-    fontWeight: '700',
-  },
-  listItemExpense: {
-    fontSize: 15,
-    fontWeight: '700',
-    color: '#2e7d32',
-  },
-  emptyList: {
-    padding: 40,
-    alignItems: 'center',
-  },
-  emptyListText: {
-    color: '#95a5a6',
-    fontSize: 14,
+    marginTop: 25,
+    marginBottom: 10,
   },
   modalOverlay: {
     flex: 1,
@@ -820,7 +1417,7 @@ const styles = StyleSheet.create({
     borderTopLeftRadius: 20,
     borderTopRightRadius: 20,
     padding: 20,
-    maxHeight: '85%',
+    maxHeight: '90%',
   },
   modalTitle: {
     fontSize: 18,
@@ -876,5 +1473,125 @@ const styles = StyleSheet.create({
   saveBtnText: {
     color: '#ffffff',
     fontWeight: '700',
+  },
+  pickerContainer: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    marginBottom: 10,
+  },
+  pickerChip: {
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 14,
+    backgroundColor: '#f1f5f1',
+    marginRight: 6,
+    marginBottom: 6,
+    borderWidth: 0.5,
+    borderColor: '#e2e8e2',
+  },
+  pickerChipActive: {
+    backgroundColor: '#1b3a1e',
+    borderColor: '#1b3a1e',
+  },
+  pickerChipText: {
+    fontSize: 11,
+    color: '#555',
+  },
+  pickerChipTextActive: {
+    color: '#fff',
+    fontWeight: '700',
+  },
+  row: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+  },
+  col: {
+    width: '48%',
+  },
+  autoCalcBox: {
+    backgroundColor: '#fcf8e3',
+    borderWidth: 0.5,
+    borderColor: '#faf2cc',
+    borderRadius: 8,
+    padding: 10,
+    marginVertical: 10,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  autoCalcLabel: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#8a6d3b',
+  },
+  autoCalcVal: {
+    fontSize: 15,
+    fontWeight: '800',
+    color: '#8a6d3b',
+  },
+  helperText: {
+    fontSize: 10,
+    color: '#6e8070',
+    marginTop: 4,
+    fontStyle: 'italic',
+    marginBottom: 10,
+  },
+  choiceModalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  choiceModalContent: {
+    backgroundColor: '#ffffff',
+    borderRadius: 16,
+    padding: 24,
+    width: '85%',
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.1,
+    shadowRadius: 10,
+    elevation: 10,
+  },
+  choiceModalTitle: {
+    fontSize: 16,
+    fontWeight: '800',
+    color: '#1b3a1e',
+    marginBottom: 20,
+  },
+  choiceButtonsRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    width: '100%',
+    marginBottom: 20,
+  },
+  choiceCard: {
+    flex: 1,
+    borderWidth: 1.5,
+    borderRadius: 12,
+    padding: 16,
+    alignItems: 'center',
+    marginHorizontal: 6,
+    backgroundColor: '#fdfdfd',
+  },
+  choiceCardIcon: {
+    fontSize: 28,
+    marginBottom: 8,
+  },
+  choiceCardTitle: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#2c3e50',
+    textAlign: 'center',
+  },
+  choiceCancelBtn: {
+    paddingVertical: 10,
+    paddingHorizontal: 20,
+  },
+  choiceCancelBtnText: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#7f8c8d',
   },
 });

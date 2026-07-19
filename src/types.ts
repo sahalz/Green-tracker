@@ -1,6 +1,6 @@
 export type CropStage = 'Seedling' | 'Vegetative' | 'Flowering' | 'Fruiting' | 'Harvested' | 'Archived';
 
-export type ActivityType = 'Tillage' | 'Planting' | 'Weeding' | 'Irrigation' | 'Pruning' | 'Spraying' | 'Harvesting' | 'Adding Manure' | 'Other';
+export type ActivityType = string;
 
 export interface Crop {
   id: string;
@@ -26,6 +26,11 @@ export interface WorkLog {
   totalCost: number;
   notes: string;
   manureName?: string;
+  yieldKg?: number;
+  income?: number;
+  noOfWorkers?: number;
+  laborCostPerWorker?: number;
+  pricePerKg?: number;
 }
 
 export interface PesticideLog {
@@ -35,4 +40,12 @@ export interface PesticideLog {
   dosage: string;
   appliedQuantity: string;
   date: string;
+  targetPest?: string;
+  activeIngredient?: string;
+  reentryHours?: number;
+  withholdingDays?: number;
+  cost?: number;
+  noOfWorkers?: number;
+  laborCostPerWorker?: number;
 }
+

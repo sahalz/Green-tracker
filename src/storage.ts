@@ -2,172 +2,156 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Crop, WorkLog, PesticideLog } from './types';
 
 const STORAGE_KEYS = {
-  CROPS: 'crop_monitor_crops_v1',
-  WORK_LOGS: 'crop_monitor_work_logs_v1',
-  PESTICIDE_LOGS: 'crop_monitor_pesticide_logs_v1',
+  CROPS: 'crop_monitor_crops_v3',
+  WORK_LOGS: 'crop_monitor_work_logs_v3',
+  PESTICIDE_LOGS: 'crop_monitor_pesticide_logs_v3',
 };
 
-// Realistic mock data
+// Realistic perennial crop mock data (Pepper & Cardamom only)
 const MOCK_CROPS: Crop[] = [
   {
     id: 'crop-1',
-    name: 'East Field Roma Tomatoes',
-    type: 'Tomatoes',
-    variety: 'Roma Red',
-    field: 'East Plot A',
-    plantingDate: '2026-05-10',
-    expectedHarvestDate: '2026-08-15',
+    name: 'Hillside Pepper Plot',
+    type: 'Pepper',
+    variety: 'Panniyur-1',
+    field: 'North-East Slope',
+    plantingDate: '2021-05-15',
+    expectedHarvestDate: '2026-12-10',
     stage: 'Fruiting',
-    notes: 'Good growth, showing flower clusters. Drip irrigation is fully functional.',
+    notes: 'Black pepper vines are in their 5th year. Growing on Glyricidia standards. Canopy density is good.',
   },
   {
     id: 'crop-2',
-    name: 'North Orchard Honeycrisp',
-    type: 'Apples',
-    variety: 'Honeycrisp',
-    field: 'Orchard Section B',
-    plantingDate: '2020-03-12', // Perennial
-    expectedHarvestDate: '2026-10-01',
-    stage: 'Vegetative',
-    notes: 'Trees in their 6th year. Fruit set looks moderate. Pruning completed in spring.',
-  },
-  {
-    id: 'crop-3',
-    name: 'South Valley Wheat',
-    type: 'Wheat',
-    variety: 'Hard Red Winter',
-    field: 'South Valley Flat',
-    plantingDate: '2025-10-05',
-    expectedHarvestDate: '2026-07-25',
-    stage: 'Harvested',
-    notes: 'Harvested with average yield of 65 bushels/acre. Soil preparation for rotation underway.',
-  },
-  {
-    id: 'crop-4',
-    name: 'Hillside Chardonnay Grapes',
-    type: 'Grapes',
-    variety: 'Chardonnay',
-    field: 'Hillside Vineyards',
-    plantingDate: '2018-04-20', // Perennial
-    expectedHarvestDate: '2026-09-10',
+    name: 'Valley View Cardamom',
+    type: 'Cardamom',
+    variety: 'NJallani',
+    field: 'Shade Valley Plot A',
+    plantingDate: '2023-09-20',
+    expectedHarvestDate: '2026-11-30',
     stage: 'Flowering',
-    notes: 'Vineyard canopy management active. Showing uniform flowering across rows.',
+    notes: 'High-yield NJallani cardamom clones. Needs active shade regulation and weed trashing. Basin mulching completed.',
   },
 ];
 
 const MOCK_WORK_LOGS: WorkLog[] = [
-  // Roma Tomatoes (crop-1)
+  // Hillside Pepper (crop-1)
   {
     id: 'work-101',
     cropId: 'crop-1',
     activityType: 'Planting',
-    date: '2026-05-10',
-    durationMinutes: 180,
-    laborCost: 150.0,
-    materialCost: 280.0, // Seedlings and stakes
-    equipmentCost: 45.0, // Rototiller fuel
-    totalCost: 475.0,
-    notes: 'Planted 400 Roma seedlings. Setup wooden stakes and tied first rows.',
+    date: '2021-05-15',
+    durationMinutes: 360,
+    laborCost: 8000.0,
+    materialCost: 5000.0, // Cuttings & compost
+    equipmentCost: 1500.0, // Pit digger rental
+    totalCost: 14500.0,
+    notes: 'Planted 150 Panniyur-1 pepper cuttings near support standard trees.',
+    noOfWorkers: 16,
+    laborCostPerWorker: 500.0,
   },
   {
     id: 'work-102',
     cropId: 'crop-1',
-    activityType: 'Irrigation',
-    date: '2026-05-20',
-    durationMinutes: 60,
-    laborCost: 30.0,
-    materialCost: 120.0, // Drip tape replacement
-    equipmentCost: 10.0, // Pump running cost
-    totalCost: 160.0,
-    notes: 'Replaced torn drip tape sections and ran irrigation for 4 hours.',
+    activityType: 'Vine Tying',
+    date: '2025-06-10',
+    durationMinutes: 180,
+    laborCost: 3000.0,
+    materialCost: 500.0, // Jute twines
+    equipmentCost: 0.0,
+    totalCost: 3500.0,
+    notes: 'Tied growing pepper vines to support trees using eco-friendly jute twines.',
+    noOfWorkers: 6,
+    laborCostPerWorker: 500.0,
   },
   {
     id: 'work-103',
     cropId: 'crop-1',
-    activityType: 'Weeding',
-    date: '2026-06-15',
-    durationMinutes: 240,
-    laborCost: 200.0,
+    activityType: 'Harvesting',
+    date: '2026-02-10',
+    durationMinutes: 480,
+    laborCost: 4000.0,
     materialCost: 0.0,
-    equipmentCost: 15.0, // Hand tools & brush cutter fuel
-    totalCost: 215.0,
-    notes: 'Cleared weeds in rows 1 to 10. Hand weeded around tomato bases.',
+    equipmentCost: 1000.0, // Drying mats & thresher
+    totalCost: 5000.0,
+    notes: 'Harvested black pepper berries. Dried under sun on mats.',
+    yieldKg: 120,
+    income: 72000.0,
+    noOfWorkers: 8,
+    laborCostPerWorker: 500.0,
   },
   {
     id: 'work-104',
     cropId: 'crop-1',
     activityType: 'Spraying',
     date: '2026-07-02',
-    durationMinutes: 90,
-    laborCost: 75.0,
-    materialCost: 65.0, // Organic copper fungicide
-    equipmentCost: 20.0, // Backpack sprayer battery/charge & wear
-    totalCost: 160.0,
-    notes: 'Applied copper spray to prevent early blight after recent heavy rains.',
-  },
-
-  // Chardonnay Grapes (crop-4)
-  {
-    id: 'work-401',
-    cropId: 'crop-4',
-    activityType: 'Pruning',
-    date: '2026-05-02',
-    durationMinutes: 300,
-    laborCost: 350.0,
-    materialCost: 0.0,
-    equipmentCost: 30.0, // Pruner sharpening & safety gear
-    totalCost: 380.0,
-    notes: 'Completed spring canopy thinning and shoot positioning on all vines.',
-  },
-  {
-    id: 'work-402',
-    cropId: 'crop-4',
-    activityType: 'Spraying',
-    date: '2026-06-10',
     durationMinutes: 120,
-    laborCost: 100.0,
-    materialCost: 95.0, // Sulphur powder
-    equipmentCost: 40.0, // Tractor-mounted sprayer fuel
-    totalCost: 235.0,
-    notes: 'Applied preventive sulfur spray for powdery mildew during pre-bloom stage.',
+    laborCost: 1200.0,
+    materialCost: 800.0, // Fungicide
+    equipmentCost: 500.0, // Sprayer fuel
+    totalCost: 2500.0,
+    notes: 'Applied copper oxychloride to prevent quick wilt (foot rot) after monsoon onset.',
+    noOfWorkers: 2,
+    laborCostPerWorker: 600.0,
   },
 
-  // South Valley Wheat (crop-3)
+  // Valley View Cardamom (crop-2)
   {
-    id: 'work-301',
-    cropId: 'crop-3',
-    activityType: 'Tillage',
-    date: '2025-10-02',
-    durationMinutes: 360,
-    laborCost: 250.0,
-    materialCost: 0.0,
-    equipmentCost: 320.0, // Tractor diesel & maintenance
-    totalCost: 570.0,
-    notes: 'Deep plowing and disc harrowing of the south 10-acre flat.',
-  },
-  {
-    id: 'work-302',
-    cropId: 'crop-3',
+    id: 'work-201',
+    cropId: 'crop-2',
     activityType: 'Planting',
-    date: '2025-10-05',
-    durationMinutes: 240,
-    laborCost: 180.0,
-    materialCost: 850.0, // Certified seed wheat
-    equipmentCost: 210.0, // Seed drill fuel
-    totalCost: 1240.0,
-    notes: 'Drilled winter wheat seed at 120 lbs/acre under optimal moisture conditions.',
+    date: '2023-09-20',
+    durationMinutes: 400,
+    laborCost: 10000.0,
+    materialCost: 12000.0, // NJallani suckers
+    equipmentCost: 2000.0,
+    totalCost: 24000.0,
+    notes: 'Completed cardomom sucker planting in rows across Shade Valley Plot A.',
+    noOfWorkers: 20,
+    laborCostPerWorker: 500.0,
   },
   {
-    id: 'work-303',
-    cropId: 'crop-3',
+    id: 'work-202',
+    cropId: 'crop-2',
+    activityType: 'Shade Regulation',
+    date: '2026-05-20',
+    durationMinutes: 240,
+    laborCost: 5000.0,
+    materialCost: 0.0,
+    equipmentCost: 2000.0, // Chainsaw fuel
+    totalCost: 7000.0,
+    notes: 'Pruned branches of shade trees to allow 40-50% light penetration during monsoon.',
+    noOfWorkers: 5,
+    laborCostPerWorker: 1000.0,
+  },
+  {
+    id: 'work-203',
+    cropId: 'crop-2',
+    activityType: 'Trashing',
+    date: '2026-06-15',
+    durationMinutes: 300,
+    laborCost: 4000.0,
+    materialCost: 0.0,
+    equipmentCost: 0.0,
+    totalCost: 4000.0,
+    notes: 'Cleared dry leaves and old tillers around cardamom clumps. Cleared basins.',
+    noOfWorkers: 8,
+    laborCostPerWorker: 500.0,
+  },
+  {
+    id: 'work-204',
+    cropId: 'crop-2',
     activityType: 'Harvesting',
     date: '2026-07-15',
     durationMinutes: 480,
-    laborCost: 600.0,
+    laborCost: 6000.0,
     materialCost: 0.0,
-    equipmentCost: 750.0, // Combine harvester rental & fuel
-    totalCost: 1350.0,
-    notes: 'Combined the wheat crop. Grain moisture was at 12.8%. Delivered to silo.',
+    equipmentCost: 1500.0, // Dryer facility fuel
+    totalCost: 7500.0,
+    notes: 'First picking round of cardamom capsules. Cured in local smoke house.',
+    yieldKg: 35,
+    income: 52500.0,
+    noOfWorkers: 10,
+    laborCostPerWorker: 600.0,
   },
 ];
 
@@ -175,18 +159,32 @@ const MOCK_PESTICIDE_LOGS: PesticideLog[] = [
   {
     id: 'pest-101',
     cropIds: ['crop-1'],
-    pesticideName: 'BlightStop Copper Fungicide',
-    dosage: '15ml per Litre of water',
-    appliedQuantity: '20 Litres of mix',
+    pesticideName: 'Copper Oxychloride',
+    dosage: '3g per Litre',
+    appliedQuantity: '50 Litres',
     date: '2026-07-02',
+    targetPest: 'Quick Wilt (Foot Rot)',
+    activeIngredient: 'Copper',
+    reentryHours: 24,
+    withholdingDays: 14,
+    cost: 800.0,
+    noOfWorkers: 2,
+    laborCostPerWorker: 600.0,
   },
   {
-    id: 'pest-401',
-    cropIds: ['crop-4'],
-    pesticideName: 'Microthiol Disperss',
-    dosage: '4 kg / Hectare',
-    appliedQuantity: '100 Litres spray volume',
-    date: '2026-06-10',
+    id: 'pest-201',
+    cropIds: ['crop-2'],
+    pesticideName: 'Thiodan',
+    dosage: '2ml per Litre',
+    appliedQuantity: '80 Litres',
+    date: '2026-07-16',
+    targetPest: 'Cardamom Thrips & Borers',
+    activeIngredient: 'Endosulfan Alternative',
+    reentryHours: 48,
+    withholdingDays: 12,
+    cost: 1500.0,
+    noOfWorkers: 3,
+    laborCostPerWorker: 600.0,
   },
 ];
 
@@ -258,7 +256,7 @@ export const deleteCrop = async (cropId: string): Promise<void> => {
 
   const pestLogs = await getPesticideLogs();
   const updatedPestLogs = pestLogs
-    .map((p) => ({ ...p, cropIds: p.cropIds.filter((id) => id !== cropId) }))
+    .map((p) => ({ ...p, cropIds: (p.cropIds || []).filter((id) => id !== cropId) }))
     .filter((p) => p.cropIds.length > 0);
   await savePesticideLogs(updatedPestLogs);
 };
@@ -343,6 +341,33 @@ export const addPesticideLog = async (log: Omit<PesticideLog, 'id'>): Promise<Pe
   };
   logs.push(newLog);
   await savePesticideLogs(logs);
+
+  // Auto-log corresponding "Spraying" work activity for each crop
+  const totalLaborCost = (log.noOfWorkers || 0) * (log.laborCostPerWorker || 0);
+  const materialCost = log.cost || 0;
+  const totalCost = totalLaborCost + materialCost;
+
+  if (totalCost > 0 && log.cropIds && log.cropIds.length > 0) {
+    const laborPerCrop = totalLaborCost / log.cropIds.length;
+    const materialPerCrop = materialCost / log.cropIds.length;
+    const workersPerCrop = (log.noOfWorkers || 0) / log.cropIds.length;
+
+    for (const cropId of log.cropIds) {
+      await addWorkLog({
+        cropId,
+        activityType: 'Spraying',
+        date: log.date,
+        durationMinutes: 0,
+        laborCost: Number(laborPerCrop.toFixed(2)),
+        materialCost: Number(materialPerCrop.toFixed(2)),
+        equipmentCost: 0,
+        noOfWorkers: Number(workersPerCrop.toFixed(1)),
+        laborCostPerWorker: log.laborCostPerWorker || 0,
+        notes: `Auto-logged spray: ${log.pesticideName}.${log.targetPest ? ' Target: ' + log.targetPest : ''}${log.withholdingDays ? ' Withholding: ' + log.withholdingDays + ' days.' : ''}`,
+      });
+    }
+  }
+
   return newLog;
 };
 
