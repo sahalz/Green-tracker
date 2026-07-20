@@ -31,6 +31,17 @@ export default function Dashboard({ crops, workLogs, pesticideLogs, onSelectCrop
   const [expectedHarvestDate, setExpectedHarvestDate] = useState('');
   const [notes, setNotes] = useState('');
 
+  const openAddModal = () => {
+    setName('');
+    setType('');
+    setVariety('');
+    setField('');
+    setNotes('');
+    setPlantingDate(new Date().toISOString().split('T')[0]);
+    setExpectedHarvestDate('');
+    setShowAddModal(true);
+  };
+
   // Calculations
   const activeCrops = crops.filter(c => c.stage !== 'Archived');
   
@@ -88,7 +99,6 @@ export default function Dashboard({ crops, workLogs, pesticideLogs, onSelectCrop
     }
   });
 
-  // Cardamom spraying warnings
   const cardamomOverdueWarnings: Array<{ cropId: string; cropName: string; lastSprayDate?: string; daysSinceLastSpray: number }> = [];
 
   activeCrops.forEach(crop => {
@@ -127,7 +137,6 @@ export default function Dashboard({ crops, workLogs, pesticideLogs, onSelectCrop
     }
   });
 
-  // Filter crops
   const filteredCrops = crops.filter(crop => {
     const matchesSearch = crop.name.toLowerCase().includes(searchQuery.toLowerCase()) || 
                           crop.type.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -168,7 +177,6 @@ export default function Dashboard({ crops, workLogs, pesticideLogs, onSelectCrop
 
   return (
     <View style={styles.container}>
-      {/* Search & Filter section is persistent at the top of crop list */}
       <ScrollView contentContainerStyle={styles.content}>
         
         {/* Sub Header */}
@@ -276,11 +284,15 @@ export default function Dashboard({ crops, workLogs, pesticideLogs, onSelectCrop
           </View>
         </View>
 
-        {/* Crop Operations List Header */}
+        {/* Operations List Header */}
         <View style={styles.cropListHeaderContainer}>
-          <Text style={styles.cropListTitle}>{language === 'ml' ? 'വിളവുകളുടെ വിവരങ്ങൾ' : 'My Crop Cycles'}</Text>
-          <TouchableOpacity style={styles.quickAddBtn} onPress={() => setShowAddModal(true)}>
-            <Text style={styles.quickAddBtnText}>➕ {t.addCrop}</Text>
+          <Text style={styles.cropListTitle}>
+            {language === 'ml' ? 'വിളവുകളുടെ വിവരങ്ങൾ' : 'My Crop Cycles'}
+          </Text>
+          <TouchableOpacity style={styles.quickAddBtn} onPress={openAddModal}>
+            <Text style={styles.quickAddBtnText}>
+              ➕ {t.addCrop}
+            </Text>
           </TouchableOpacity>
         </View>
 
@@ -305,17 +317,19 @@ export default function Dashboard({ crops, workLogs, pesticideLogs, onSelectCrop
                 {language === 'ml' ? 'എല്ലാം' : 'All'}
               </Text>
             </TouchableOpacity>
-            {STAGES.map((stg) => (
-              <TouchableOpacity
-                key={stg}
-                style={[styles.filterChip, filterStage === stg && styles.filterChipActive]}
-                onPress={() => setFilterStage(stg)}
-              >
-                <Text style={[styles.filterChipText, filterStage === stg && styles.filterChipTextActive]}>
-                  {translateStage(stg, language)}
-                </Text>
-              </TouchableOpacity>
-            ))}
+            {STAGES.map((stg) => {
+              return (
+                <TouchableOpacity
+                  key={stg}
+                  style={[styles.filterChip, filterStage === stg && styles.filterChipActive]}
+                  onPress={() => setFilterStage(stg)}
+                >
+                  <Text style={[styles.filterChipText, filterStage === stg && styles.filterChipTextActive]}>
+                    {translateStage(stg, language)}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
           </ScrollView>
         </View>
 
@@ -338,7 +352,7 @@ export default function Dashboard({ crops, workLogs, pesticideLogs, onSelectCrop
               return (
                 <TouchableOpacity key={crop.id} style={styles.cropListItem} onPress={() => onSelectCrop(crop)}>
                   <View style={styles.cropListItemLeft}>
-                    <Text style={styles.listItemType}>{crop.type} ({crop.variety})</Text>
+                    <Text style={styles.listItemType}>{crop.type}{crop.variety ? ` (${crop.variety})` : ''}</Text>
                     <Text style={styles.listItemName}>{crop.name}</Text>
                     <Text style={styles.listItemField}>📍 {crop.field}</Text>
                   </View>
@@ -392,6 +406,23 @@ export default function Dashboard({ crops, workLogs, pesticideLogs, onSelectCrop
               <TextInput style={styles.input} placeholder={language === 'ml' ? 'ഉദാ: കിഴക്കേ പറമ്പ് കുരുമുളക്' : 'e.g. East Field Pepper'} value={name} onChangeText={setName} />
               
               <Text style={styles.inputLabel}>{t.cropTypeLabel}</Text>
+              <View style={styles.pickerContainer}>
+                {['Pepper', 'Cardamom'].map(chipType => {
+                  const displayLabel = chipType === 'Pepper' ? (language === 'ml' ? 'കുരുമുളക്' : 'Pepper') : (language === 'ml' ? 'ഏലം' : 'Cardamom');
+                  const val = chipType === 'Cardamom' ? (language === 'ml' ? 'ഏലം' : 'Cardamom') : (language === 'ml' ? 'കുരുമുളക്' : 'Pepper');
+                  return (
+                    <TouchableOpacity
+                      key={chipType}
+                      style={[styles.pickerChip, type === val && styles.pickerChipActive]}
+                      onPress={() => setType(val)}
+                    >
+                      <Text style={[styles.pickerChipText, type === val && styles.pickerChipTextActive]}>
+                        {displayLabel}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
               <TextInput style={styles.input} placeholder={language === 'ml' ? 'ഉദാ: കുരുമുളക്, ഏലം' : 'e.g. Pepper, Cardamom'} value={type} onChangeText={setType} />
               
               <Text style={styles.inputLabel}>{t.varietyLabel}</Text>
@@ -825,6 +856,60 @@ const styles = StyleSheet.create({
   },
   saveBtnText: {
     color: '#ffffff',
+    fontWeight: '700',
+  },
+  tabContainer: {
+    flexDirection: 'row',
+    backgroundColor: '#e8f0e8',
+    borderRadius: 12,
+    padding: 4,
+    marginHorizontal: 16,
+    marginTop: 10,
+    marginBottom: 5,
+  },
+  tabButton: {
+    flex: 1,
+    paddingVertical: 10,
+    alignItems: 'center',
+    borderRadius: 8,
+  },
+  tabButtonActive: {
+    backgroundColor: '#1b3a1e',
+  },
+  tabButtonText: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#6e8070',
+  },
+  tabButtonTextActive: {
+    color: '#ffffff',
+  },
+  pickerContainer: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    marginTop: 4,
+    marginBottom: 6,
+  },
+  pickerChip: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 14,
+    backgroundColor: '#f1f5f1',
+    marginRight: 6,
+    marginBottom: 6,
+    borderWidth: 0.5,
+    borderColor: '#e2e8e2',
+  },
+  pickerChipActive: {
+    backgroundColor: '#1b3a1e',
+    borderColor: '#1b3a1e',
+  },
+  pickerChipText: {
+    fontSize: 11,
+    color: '#555',
+  },
+  pickerChipTextActive: {
+    color: '#fff',
     fontWeight: '700',
   },
 });

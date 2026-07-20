@@ -1,45 +1,27 @@
 import React, { useState } from 'react';
 import { StyleSheet, Text, View, ScrollView, TouchableOpacity, TextInput, Modal, Alert, Platform } from 'react-native';
-import { Crop, CropStage, WorkLog, PesticideLog } from '../types';
+import { Crop, CropStage, WorkLog } from '../types';
 import { Language, TRANSLATIONS, translateStage, translateActivity } from '../translations';
 
-interface CropsTabProps {
-  crops: Crop[];
+interface SheepTabProps {
   workLogs: WorkLog[];
-  pesticideLogs: PesticideLog[];
-  onAddCrop: (crop: Omit<Crop, 'id'>) => Promise<any>;
   onUpdateCrop: (crop: Crop) => Promise<any>;
-  onDeleteCrop: (id: string) => Promise<any>;
   selectedCrop: Crop | null;
-  onSelectCrop: (crop: Crop | null) => void;
   onAddWorkLog: (log: Omit<WorkLog, 'id' | 'totalCost'>) => Promise<any>;
   onDeleteWorkLog: (id: string) => Promise<any>;
-  onAddPesticideLog: (log: Omit<PesticideLog, 'id'>) => Promise<any>;
-  onDeletePesticideLog: (id: string) => Promise<any>;
   language: Language;
 }
 
 const STAGES: CropStage[] = ['Seedling', 'Vegetative', 'Flowering', 'Fruiting', 'Harvested', 'Archived'];
-const ACTIVITIES = [
-  'Tillage', 'Planting', 'Weeding', 'Irrigation', 'Pruning', 'Spraying', 'Harvesting',
-  'Adding Manure', 'Vine Tying', 'Shade Regulation', 'Trashing', 'Curing', 'Other'
-];
 
-export default function CropsTab({
-  crops,
+export default function SheepTab({
   workLogs,
-  pesticideLogs,
-  onAddCrop,
   onUpdateCrop,
-  onDeleteCrop,
   selectedCrop,
-  onSelectCrop,
   onAddWorkLog,
   onDeleteWorkLog,
-  onAddPesticideLog,
-  onDeletePesticideLog,
   language,
-}: CropsTabProps) {
+}: SheepTabProps) {
   const t = TRANSLATIONS[language];
 
   // Work Log Form States
@@ -55,94 +37,62 @@ export default function CropsTab({
   const [workMaterialCost, setWorkMaterialCost] = useState<string>('');
   const [workIncome, setWorkIncome] = useState<string>('');
 
-
-
-  // Input Selection Modal State
-  const [showInputChoiceModal, setShowInputChoiceModal] = useState(false);
-
-  // Dedicated Manure Log Form States
-  const [showManureLogModal, setShowManureLogModal] = useState(false);
-  const [manureLogName, setManureLogName] = useState<string>('');
-  const [manureLogQty, setManureLogQty] = useState<string>('');
-  const [manureLogCost, setManureLogCost] = useState<string>('0');
-  const [manureLogWorkers, setManureLogWorkers] = useState<string>('');
-  const [manureLogLaborCost, setManureLogLaborCost] = useState<string>('');
-  const [manureLogDate, setManureLogDate] = useState<string>(new Date().toISOString().split('T')[0]);
-  const [manureLogNotes, setManureLogNotes] = useState<string>('');
-
-  // Spray Log Form States
-  const [showSprayLogModal, setShowSprayLogModal] = useState(false);
-  const [sprayPesticideName, setSprayPesticideName] = useState<string>('');
-  const [sprayTargetPest, setSprayTargetPest] = useState<string>('');
-  const [sprayActiveIngredient, setSprayActiveIngredient] = useState<string>('');
-  const [sprayDosage, setSprayDosage] = useState<string>('');
-  const [sprayQuantity, setSprayQuantity] = useState<string>('');
-  const [sprayDate, setSprayDate] = useState<string>(new Date().toISOString().split('T')[0]);
-  const [sprayWithholdingDays, setSprayWithholdingDays] = useState<string>('');
-  const [sprayReentryHours, setSprayReentryHours] = useState<string>('');
-  const [sprayWorkers, setSprayWorkers] = useState<string>('');
-  const [sprayLaborCostPerWorker, setSprayLaborCostPerWorker] = useState<string>('');
-  const [sprayPesticideCost, setSprayPesticideCost] = useState<string>('');
-
-  // Earnings Form States
-  const [showEarningsModal, setShowEarningsModal] = useState(false);
-  const [earningsItem, setEarningsItem] = useState<string>('');
-  const [earningsQuantity, setEarningsQuantity] = useState<string>('');
-  const [earningsRawYield, setEarningsRawYield] = useState<string>('');
-  const [earningsPricePerKg, setEarningsPricePerKg] = useState<string>('');
-  const [earningsDate, setEarningsDate] = useState<string>(new Date().toISOString().split('T')[0]);
-  const [earningsNotes, setEarningsNotes] = useState<string>('');
-  const [earningsProcessingCharge, setEarningsProcessingCharge] = useState<string>('');
-
-  // Livestock placeholder states to satisfy compilation
+  // Goat specific states
   const [workMalesCount, setWorkMalesCount] = useState<string>('');
   const [workFemalesCount, setWorkFemalesCount] = useState<string>('');
   const [workBreededGoat, setWorkBreededGoat] = useState<string>('');
   const [workMotherGoat, setWorkMotherGoat] = useState<string>('');
+
   const [earningsMalesCount, setEarningsMalesCount] = useState<string>('');
   const [earningsFemalesCount, setEarningsFemalesCount] = useState<string>('');
   const [earningsKidsCount, setEarningsKidsCount] = useState<string>('');
   const [earningsTotalAmount, setEarningsTotalAmount] = useState<string>('');
+
   const [showAdjustModal, setShowAdjustModal] = useState(false);
   const [adjustMales, setAdjustMales] = useState('');
   const [adjustFemales, setAdjustFemales] = useState('');
   const [adjustKids, setAdjustKids] = useState('');
+
+  // Stage Count / Manual Entry Modal States
   const [showStageCountModal, setShowStageCountModal] = useState(false);
   const [targetStageForModal, setTargetStageForModal] = useState<CropStage>('Seedling');
   const [stageCountValue, setStageCountValue] = useState<string>('');
+
+  // Feed Modal State
   const [showFeedModal, setShowFeedModal] = useState(false);
+
+  // Feed form states
   const [feedDate, setFeedDate] = useState<string>(new Date().toISOString().split('T')[0]);
   const [feedType, setFeedType] = useState<string>('');
   const [feedQty, setFeedQty] = useState<string>('');
   const [feedCost, setFeedCost] = useState<string>('');
   const [feedNotes, setFeedNotes] = useState<string>('');
 
+
+
+  // Earnings Form States
+  const [showEarningsModal, setShowEarningsModal] = useState(false);
+  const [earningsItem, setEarningsItem] = useState<string>('');
+  const [earningsDate, setEarningsDate] = useState<string>(new Date().toISOString().split('T')[0]);
+  const [earningsNotes, setEarningsNotes] = useState<string>('');
+
   if (!selectedCrop) return null;
 
-  const isCardamom = selectedCrop.type.toLowerCase().includes('cardamom') || 
-                     selectedCrop.type.toLowerCase().includes('cardomom') || 
-                     selectedCrop.type.includes('ഏല');
-  const isPepper = selectedCrop.type.toLowerCase().includes('pepper') || 
-                   selectedCrop.type.includes('കുരുമുളക്');
-  const isGoat = false;
-  const isGoatSingleton = false;
-  const isBuying = false;
-  const isNewBabies = false;
-  const isFeedOrFood = false;
-  const isMedical = false;
+  const isGoat = true;
+  const isCardamom = false;
+  const isPepper = false;
 
-  const isHarvesting = workActivity.trim().toLowerCase().includes('harvest') || 
-                       workActivity.trim().includes('വിളവെടുപ്പ്') || 
-                       workActivity.trim().includes('വിളവെടുക്');
-  
-  const isCuring = workActivity.trim().toLowerCase().includes('curing') ||
-                   workActivity.trim().toLowerCase().includes('dry') ||
-                   workActivity.trim().includes('ഉണക്കൽ');
+  const isHarvesting = false;
+  const isCuring = false;
 
-  const isHarvestingOrCuring = isHarvesting || isCuring;
+  const isBuying = workActivity === 'Buying' || workActivity.trim().toLowerCase().includes('buy') || workActivity.trim().includes('വാങ്ങ');
+  const isNewBabies = workActivity === 'New Babies' || workActivity.trim().toLowerCase().includes('baby') || workActivity.trim().includes('കുട്ടി') || workActivity.trim().includes('പ്രസവ');
+  const isFeedOrFood = workActivity === 'Feed / Food' || workActivity.trim().toLowerCase().includes('feed') || workActivity.trim().toLowerCase().includes('food') || workActivity.trim().includes('തീറ്റ');
+  const isMedical = workActivity === 'Medical / Vaccine' || workActivity.trim().toLowerCase().includes('med') || workActivity.trim().toLowerCase().includes('vacc') || workActivity.trim().includes('മരുന്ന്') || workActivity.trim().includes('വാക്സിൻ');
+
+  const isHarvestingOrCuring = isBuying || isNewBabies || isFeedOrFood;
 
   const cropWorkLogs = workLogs.filter(w => w.cropId === selectedCrop.id);
-  const cropPestLogs = pesticideLogs.filter(p => (p.cropIds || []).includes(selectedCrop.id));
 
   const laborCost = cropWorkLogs.reduce((sum, l) => sum + l.laborCost, 0);
   const materialCost = cropWorkLogs.reduce((sum, l) => sum + l.materialCost, 0);
@@ -153,56 +103,79 @@ export default function CropsTab({
   const totalRevenue = cropWorkLogs.reduce((sum, l) => sum + (l.income || 0), 0);
   const netProfit = totalRevenue - totalCost;
 
-  // Calculate withholding warning for this crop
-  let withholdingDaysLeft = 0;
-  let warningPesticideName = '';
-  const todayTime = new Date(new Date().toISOString().split('T')[0]).getTime();
-  
-  cropPestLogs.forEach(pest => {
-    if (pest.withholdingDays && pest.withholdingDays > 0) {
-      const sprayTime = new Date(pest.date).getTime();
-      const daysPassed = (todayTime - sprayTime) / (1000 * 60 * 60 * 24);
-      const daysLeft = Math.ceil(pest.withholdingDays - daysPassed);
-      if (daysLeft > 0 && daysLeft > withholdingDaysLeft) {
-        withholdingDaysLeft = daysLeft;
-        warningPesticideName = pest.pesticideName;
-      }
-    }
-  });
-
   const handleStageChange = async (newStage: CropStage) => {
     const updated: Crop = { ...selectedCrop, stage: newStage };
     await onUpdateCrop(updated);
   };
 
-  const handleDelete = async () => {
-    const title = language === 'ml' ? 'വിവരങ്ങൾ ഒഴിവാക്കണോ?' : 'Delete Crop';
-    const msg = language === 'ml' 
-      ? `"${selectedCrop.name}" എന്ന വിളയുടെ എല്ലാ വിവരങ്ങളും ഇതിലൂടെ പൂർണ്ണമായി ഒഴിവാക്കപ്പെടും. തുടരണോ?` 
-      : `Are you sure you want to delete "${selectedCrop.name}"? This will also delete all related work logs, expenses, and pesticide application records.`;
 
-    if (Platform.OS === 'web') {
-      const confirmed = window.confirm(`${title}\n\n${msg}`);
-      if (confirmed) {
-        await onDeleteCrop(selectedCrop.id);
-        onSelectCrop(null);
-      }
-    } else {
-      Alert.alert(title, msg, [
-        { text: language === 'ml' ? 'വേണ്ട' : 'Cancel', style: 'cancel' },
-        {
-          text: language === 'ml' ? 'ഒഴിവാക്കുക' : 'Delete',
-          style: 'destructive',
-          onPress: async () => {
-            await onDeleteCrop(selectedCrop.id);
-            onSelectCrop(null);
-          },
-        },
-      ]);
-    }
+
+  const handleAdjustInventorySubmit = async () => {
+    if (!selectedCrop) return;
+    const updatedCrop = {
+      ...selectedCrop,
+      malesCount: Number(adjustMales) || 0,
+      femalesCount: Number(adjustFemales) || 0,
+      kidsCount: Number(adjustKids) || 0,
+    };
+    await onUpdateCrop(updatedCrop);
+    setShowAdjustModal(false);
   };
 
+  const handleAddFeedExpenseSubmit = async () => {
+    if (!selectedCrop) return;
+    if (!feedType.trim() || !feedCost) {
+      Alert.alert(
+        language === 'ml' ? 'അപൂർണ്ണമായ വിവരങ്ങൾ' : 'Missing Fields',
+        language === 'ml' ? 'തീറ്റയുടെ ഇനവും ചിലവ് തുകയും നൽകുക.' : 'Please enter feed type and cost.'
+      );
+      return;
+    }
 
+    const logData = {
+      cropId: selectedCrop.id,
+      activityType: 'Feed / Food',
+      date: feedDate,
+      durationMinutes: 0,
+      laborCost: 0,
+      materialCost: Number(feedCost) || 0,
+      equipmentCost: 0,
+      notes: feedNotes.trim() ? `Feed Type: ${feedType.trim()}. ${feedNotes.trim()}` : `Feed Type: ${feedType.trim()}`,
+      yieldKg: Number(feedQty) || 0,
+    };
+
+    await onAddWorkLog(logData);
+
+    // Reset feed form
+    setFeedType('');
+    setFeedQty('');
+    setFeedCost('');
+    setFeedNotes('');
+    setFeedDate(new Date().toISOString().split('T')[0]);
+    setShowFeedModal(false);
+  };
+
+  const handleStageCountSubmit = async (saveAsActiveStage: boolean) => {
+    if (!selectedCrop) return;
+    const countNum = Number(stageCountValue) || 0;
+
+    let updatedCrop = { ...selectedCrop };
+    
+    // Update the correct stage count property
+    if (targetStageForModal === 'Seedling') updatedCrop.stageCountKid = countNum;
+    else if (targetStageForModal === 'Vegetative') updatedCrop.stageCountGrower = countNum;
+    else if (targetStageForModal === 'Flowering') updatedCrop.stageCountBreeder = countNum;
+    else if (targetStageForModal === 'Fruiting') updatedCrop.stageCountPregnant = countNum;
+    else if (targetStageForModal === 'Harvested') updatedCrop.stageCountLactating = countNum;
+    else if (targetStageForModal === 'Archived') updatedCrop.stageCountArchived = countNum;
+
+    if (saveAsActiveStage) {
+      updatedCrop.stage = targetStageForModal;
+    }
+
+    await onUpdateCrop(updatedCrop);
+    setShowStageCountModal(false);
+  };
 
   const handleAddWorkLogSubmit = async () => {
     if (!selectedCrop) return;
@@ -213,7 +186,7 @@ export default function CropsTab({
       );
       return;
     }
-    if (!workWorkers || !workLaborCostPerWorker) {
+    if (!isGoat && (!workWorkers || !workLaborCostPerWorker)) {
       Alert.alert(
         language === 'ml' ? 'അപൂർണ്ണമായ വിവരങ്ങൾ' : 'Missing Fields',
         language === 'ml' ? 'തൊഴിലാളികളുടെ എണ്ണവും കൂലിയും നൽകുക.' : 'Please enter number of workers and labor cost per worker.'
@@ -226,6 +199,22 @@ export default function CropsTab({
     const costPerWorkerNum = Number(workLaborCostPerWorker) || undefined;
 
     let finalYield: number | undefined = isHarvestingOrCuring ? (Number(workYield) || undefined) : undefined;
+    let finalMalesCount: number | undefined = undefined;
+    let finalFemalesCount: number | undefined = undefined;
+
+    if (isGoat) {
+      if (isBuying) {
+        finalMalesCount = Number(workMalesCount) || 0;
+        finalFemalesCount = Number(workFemalesCount) || 0;
+        finalYield = finalMalesCount + finalFemalesCount;
+      } else if (isNewBabies) {
+        finalMalesCount = Number(workMalesCount) || 0;
+        finalFemalesCount = Number(workFemalesCount) || 0;
+        finalYield = finalMalesCount + finalFemalesCount;
+      } else if (isFeedOrFood) {
+        finalYield = Number(workYield) || 0;
+      }
+    }
 
     const logData = {
       cropId: selectedCrop.id,
@@ -242,9 +231,34 @@ export default function CropsTab({
       yieldKg: finalYield,
       rawYieldKg: isHarvestingOrCuring && isCardamom ? (Number(workRawYield) || undefined) : undefined,
       income: isHarvesting ? (Number(workIncome) || undefined) : undefined,
+      malesCount: finalMalesCount,
+      femalesCount: finalFemalesCount,
+      breededGoat: workActivity === 'Breeding' ? workBreededGoat.trim() || undefined : undefined,
+      motherGoat: workActivity === 'New Babies' ? workMotherGoat.trim() || undefined : undefined,
     };
 
     await onAddWorkLog(logData);
+
+    // Update inventory automatically
+    if (isGoat) {
+      let updatedMales = selectedCrop.malesCount || 0;
+      let updatedFemales = selectedCrop.femalesCount || 0;
+      let updatedKids = selectedCrop.kidsCount || 0;
+
+      if (isBuying) {
+        updatedMales += finalMalesCount || 0;
+        updatedFemales += finalFemalesCount || 0;
+      } else if (isNewBabies) {
+        updatedKids += finalYield || 0;
+      }
+
+      await onUpdateCrop({
+        ...selectedCrop,
+        malesCount: updatedMales,
+        femalesCount: updatedFemales,
+        kidsCount: updatedKids,
+      });
+    }
 
     setShowWorkLogModal(false);
     
@@ -258,311 +272,105 @@ export default function CropsTab({
     setWorkRawYield('');
     setWorkMaterialCost('');
     setWorkIncome('');
+    setWorkMalesCount('');
+    setWorkFemalesCount('');
+    setWorkBreededGoat('');
+    setWorkMotherGoat('');
   };
 
-  const handleAddManureLogSubmit = async () => {
-    if (!manureLogName.trim() || !manureLogQty || !manureLogWorkers || !manureLogLaborCost) {
-      Alert.alert(
-        language === 'ml' ? 'അപൂർണ്ണമായ വിവരങ്ങൾ' : 'Missing Fields',
-        language === 'ml' ? 'വളത്തിന്റെ പേര്, അളവ്, തൊഴിലാളികൾ, കൂലി എന്നിവ നൽകുക.' : 'Please enter manure name, quantity, workers, and labor cost per worker.'
-      );
-      return;
-    }
 
-    const workersNum = Number(manureLogWorkers) || 0;
-    const costPerWorkerNum = Number(manureLogLaborCost) || 0;
-    const calculatedLaborCost = workersNum * costPerWorkerNum;
-    const materialCostNum = Number(manureLogCost) || 0;
-    const qtyNum = Number(manureLogQty) || 0;
-
-    const logData = {
-      cropId: selectedCrop.id,
-      activityType: 'Adding Manure',
-      date: manureLogDate,
-      durationMinutes: 0,
-      laborCost: calculatedLaborCost,
-      materialCost: materialCostNum,
-      equipmentCost: 0,
-      notes: manureLogNotes.trim(),
-      manureName: manureLogName.trim(),
-      yieldKg: qtyNum,
-      income: undefined,
-      noOfWorkers: workersNum,
-      laborCostPerWorker: costPerWorkerNum,
-    };
-
-    await onAddWorkLog(logData);
-    setShowManureLogModal(false);
-
-    // Reset manure log form
-    setManureLogName('');
-    setManureLogQty('');
-    setManureLogCost('0');
-    setManureLogWorkers('');
-    setManureLogLaborCost('');
-    setManureLogDate(new Date().toISOString().split('T')[0]);
-    setManureLogNotes('');
-  };
-
-  const handleAddSprayLogSubmit = async () => {
-    if (!sprayPesticideName) {
-      Alert.alert(
-        language === 'ml' ? 'അപൂർണ്ണമായ വിവരങ്ങൾ' : 'Missing Fields',
-        language === 'ml' ? 'കീടനാശിനിയുടെ പേര് നൽകുക.' : 'Please enter pesticide name.'
-      );
-      return;
-    }
-
-    const workersNum = Number(sprayWorkers) || 0;
-    const costPerWorkerNum = Number(sprayLaborCostPerWorker) || 0;
-    const pesticideCostNum = Number(sprayPesticideCost) || 0;
-
-    const logData = {
-      cropIds: [selectedCrop.id],
-      pesticideName: sprayPesticideName,
-      dosage: sprayDosage,
-      appliedQuantity: sprayQuantity,
-      date: sprayDate,
-      targetPest: sprayTargetPest.trim() || undefined,
-      activeIngredient: sprayActiveIngredient.trim() || undefined,
-      reentryHours: Number(sprayReentryHours) || undefined,
-      withholdingDays: Number(sprayWithholdingDays) || undefined,
-      cost: pesticideCostNum,
-      noOfWorkers: workersNum,
-      laborCostPerWorker: costPerWorkerNum,
-    };
-
-    await onAddPesticideLog(logData);
-    setShowSprayLogModal(false);
-
-    // Reset spray form
-    setSprayPesticideName('');
-    setSprayTargetPest('');
-    setSprayActiveIngredient('');
-    setSprayDosage('');
-    setSprayQuantity('');
-    setSprayDate(new Date().toISOString().split('T')[0]);
-    setSprayWithholdingDays('');
-    setSprayReentryHours('');
-    setSprayWorkers('');
-    setSprayLaborCostPerWorker('');
-    setSprayPesticideCost('');
-  };
 
   const handleAddEarningsSubmit = async () => {
     if (!selectedCrop) return;
-    if (isGoat) {
-      if (!earningsTotalAmount) {
-        Alert.alert(
-          language === 'ml' ? 'അപൂർണ്ണമായ വിവരങ്ങൾ' : 'Missing Fields',
-          language === 'ml' ? 'ആകെ വിറ്റ തുക നൽകുക.' : 'Please enter total sale amount.'
-        );
-        return;
+    if (!earningsTotalAmount) {
+      Alert.alert(
+        language === 'ml' ? 'അപൂർണ്ണമായ വിവരങ്ങൾ' : 'Missing Fields',
+        language === 'ml' ? 'ആകെ വിറ്റ തുക നൽകുക.' : 'Please enter total sale amount.'
+      );
+      return;
+    }
+    const malesSold = Number(earningsMalesCount) || 0;
+    const femalesSold = Number(earningsFemalesCount) || 0;
+    const kidsSold = Number(earningsKidsCount) || 0;
+    const totalSold = malesSold + femalesSold + kidsSold;
+
+    const logData = {
+      cropId: selectedCrop.id,
+      activityType: 'Revenue',
+      date: earningsDate,
+      durationMinutes: 0,
+      laborCost: 0,
+      materialCost: 0,
+      equipmentCost: 0,
+      notes: earningsNotes.trim(),
+      manureName: earningsItem.trim(),
+      yieldKg: totalSold,
+      income: Number(earningsTotalAmount) || 0,
+      malesCount: malesSold,
+      femalesCount: femalesSold,
+      kidsCount: kidsSold,
+    };
+
+    await onAddWorkLog(logData);
+
+    // Subtract from inventory
+    let updatedMales = Math.max(0, (selectedCrop.malesCount || 0) - malesSold);
+    let updatedFemales = Math.max(0, (selectedCrop.femalesCount || 0) - femalesSold);
+    let updatedKids = Math.max(0, (selectedCrop.kidsCount || 0) - kidsSold);
+
+    await onUpdateCrop({
+      ...selectedCrop,
+      malesCount: updatedMales,
+      femalesCount: updatedFemales,
+      kidsCount: updatedKids,
+    });
+
+    setShowEarningsModal(false);
+
+    // Reset goat form
+    setEarningsItem('');
+    setEarningsMalesCount('');
+    setEarningsFemalesCount('');
+    setEarningsKidsCount('');
+    setEarningsTotalAmount('');
+    setEarningsNotes('');
+    setEarningsDate(new Date().toISOString().split('T')[0]);
+  };
+
+  const handleDeleteActivity = async (logId: string) => {
+    const title = language === 'ml' ? 'രേഖ ഒഴിവാക്കണോ?' : 'Delete Log Entry';
+    const msg = language === 'ml' 
+      ? 'ഈ വിവരങ്ങൾ ഒഴിവാക്കപ്പെടും, ഒപ്പം സ്റ്റോക്ക് വിവരങ്ങൾ പഴയതുപോലെ ക്രമീകരിക്കപ്പെടും. തുടർന്നു പോകണോ?' 
+      : 'Are you sure you want to delete this log? Stock inventory counts will be reverted accordingly.';
+
+    if (Platform.OS === 'web') {
+      const confirmed = window.confirm(`${title}\n\n${msg}`);
+      if (confirmed) {
+        await onDeleteWorkLog(logId);
       }
-      const malesSold = Number(earningsMalesCount) || 0;
-      const femalesSold = Number(earningsFemalesCount) || 0;
-      const kidsSold = Number(earningsKidsCount) || 0;
-      const totalSold = malesSold + femalesSold + kidsSold;
-
-      const logData = {
-        cropId: selectedCrop.id,
-        activityType: 'Revenue',
-        date: earningsDate,
-        durationMinutes: 0,
-        laborCost: 0,
-        materialCost: 0,
-        equipmentCost: 0,
-        notes: earningsNotes.trim(),
-        manureName: earningsItem.trim(),
-        yieldKg: totalSold,
-        income: Number(earningsTotalAmount) || 0,
-        malesCount: malesSold,
-        femalesCount: femalesSold,
-      };
-
-      await onAddWorkLog(logData);
-
-      // Subtract from inventory
-      let updatedMales = Math.max(0, (selectedCrop.malesCount || 0) - malesSold);
-      let updatedFemales = Math.max(0, (selectedCrop.femalesCount || 0) - femalesSold);
-      let updatedKids = Math.max(0, (selectedCrop.kidsCount || 0) - kidsSold);
-
-      await onUpdateCrop({
-        ...selectedCrop,
-        malesCount: updatedMales,
-        femalesCount: updatedFemales,
-        kidsCount: updatedKids,
-      });
-
-      setShowEarningsModal(false);
-
-      // Reset goat form
-      setEarningsItem('');
-      setEarningsMalesCount('');
-      setEarningsFemalesCount('');
-      setEarningsKidsCount('');
-      setEarningsTotalAmount('');
-      setEarningsNotes('');
-      setEarningsDate(new Date().toISOString().split('T')[0]);
     } else {
-      if (!earningsItem.trim() || !earningsQuantity || !earningsPricePerKg) {
-        Alert.alert(
-          language === 'ml' ? 'അപൂർണ്ണമായ വിവരങ്ങൾ' : 'Missing Fields',
-          language === 'ml' ? 'ഉൽപ്പന്നം, അളവ്, കിലോ വില എന്നിവ പൂരിപ്പിക്കുക.' : 'Please enter item, quantity, and price per kg.'
-        );
-        return;
-      }
-
-      const qty = Number(earningsQuantity) || 0;
-      const rate = Number(earningsPricePerKg) || 0;
-      const calculatedIncome = qty * rate;
-
-      const logData = {
-        cropId: selectedCrop.id,
-        activityType: 'Revenue',
-        date: earningsDate,
-        durationMinutes: 0,
-        laborCost: 0,
-        materialCost: 0,
-        equipmentCost: 0,
-        notes: earningsNotes.trim(),
-        manureName: earningsItem.trim(),
-        yieldKg: qty,
-        rawYieldKg: isCardamom ? (Number(earningsRawYield) || undefined) : undefined,
-        processingCharge: (isPepper || isCardamom) ? (Number(earningsProcessingCharge) || undefined) : undefined,
-        income: calculatedIncome,
-        pricePerKg: rate,
-      };
-
-      await onAddWorkLog(logData);
-      setShowEarningsModal(false);
-
-      // Reset crops form
-      setEarningsItem('');
-      setEarningsQuantity('');
-      setEarningsRawYield('');
-      setEarningsProcessingCharge('');
-      setEarningsPricePerKg('');
-      setEarningsNotes('');
-      setEarningsDate(new Date().toISOString().split('T')[0]);
+      Alert.alert(title, msg, [
+        { text: t.cancel, style: 'cancel' },
+        {
+          text: language === 'ml' ? 'ഒഴിവാക്കുക' : 'Delete',
+          style: 'destructive',
+          onPress: async () => {
+            await onDeleteWorkLog(logId);
+          }
+        }
+      ]);
     }
   };
 
   // Dynamic calculations for preview in UI
   const liveWorkTotalLaborCost = (Number(workWorkers) || 0) * (Number(workLaborCostPerWorker) || 0);
   
-  const liveSprayLaborCost = (Number(sprayWorkers) || 0) * (Number(sprayLaborCostPerWorker) || 0);
-  const liveSprayTotalCost = liveSprayLaborCost + (Number(sprayPesticideCost) || 0);
 
-  const liveEarningsTotalAmount = (Number(earningsQuantity) || 0) * (Number(earningsPricePerKg) || 0);
-
-  const liveManureLaborCost = (Number(manureLogWorkers) || 0) * (Number(manureLogLaborCost) || 0);
-  const liveManureTotalCost = liveManureLaborCost + (Number(manureLogCost) || 0);
-
-  // Check if Cardamom and spraying is overdue (30 days)
-  const isCropActive = selectedCrop.stage !== 'Archived';
-  
-  let isSprayingOverdue = false;
-  let daysSinceLastSpray = 0;
-  let lastSprayDateStr = '';
-
-  if (isCardamom && isCropActive) {
-    const sortedSprays = cropPestLogs.sort(
-      (a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()
-    );
-
-    if (sortedSprays.length > 0) {
-      const lastSprayDate = new Date(sortedSprays[0].date);
-      lastSprayDateStr = sortedSprays[0].date;
-      const msDiff = Date.now() - lastSprayDate.getTime();
-      daysSinceLastSpray = Math.floor(msDiff / (24 * 60 * 60 * 1000));
-      if (daysSinceLastSpray > 30) {
-        isSprayingOverdue = true;
-      }
-    } else {
-      const plantingDate = new Date(selectedCrop.plantingDate);
-      const msDiff = Date.now() - plantingDate.getTime();
-      daysSinceLastSpray = Math.floor(msDiff / (24 * 60 * 60 * 1000));
-      if (daysSinceLastSpray > 30) {
-        isSprayingOverdue = true;
-      }
-    }
-  }
 
   return (
     <View style={styles.container}>
       <ScrollView style={styles.container} contentContainerStyle={styles.content}>
-        {/* Back Button */}
-        {!isGoatSingleton && (
-          <TouchableOpacity style={styles.backButton} onPress={() => onSelectCrop(null)}>
-            <Text style={styles.backButtonText}>{t.backToList}</Text>
-          </TouchableOpacity>
-        )}
 
-        {/* Safety Withholding Warning Banner */}
-        {withholdingDaysLeft > 0 && (
-          <View style={styles.withholdingAlertCard}>
-            <Text style={styles.withholdingAlertTitle}>
-              {language === 'ml' ? '⚠️ വിളവെടുപ്പ് വിലക്ക് നിലവിലുണ്ട്!' : '⚠️ HARVEST WITHHOLDING ACTIVE!'}
-            </Text>
-            <Text style={styles.withholdingAlertText}>
-              {language === 'ml' 
-                ? `${warningPesticideName} ഉപയോഗിച്ചതിനാൽ അടുത്ത ${withholdingDaysLeft} ദിവസത്തേക്ക് വിളവെടുക്കരുത്.` 
-                : `Sprayed with ${warningPesticideName}. Do not harvest for the next ${withholdingDaysLeft} days.`
-              }
-            </Text>
-          </View>
-        )}
-
-        {/* Spraying Overdue Warning Banner */}
-        {isSprayingOverdue && (
-          <View style={[styles.withholdingAlertCard, { backgroundColor: '#fff3cd', borderColor: '#ffeeba' }]}>
-            <Text style={[styles.withholdingAlertTitle, { color: '#856404' }]}>
-              ⚠️ {t.sprayingOverdue}
-            </Text>
-            <Text style={[styles.withholdingAlertText, { color: '#856404' }]}>
-              {lastSprayDateStr 
-                ? (language === 'ml' 
-                  ? `അവസാനമായി മരുന്ന് തളിച്ചത് ${daysSinceLastSpray} ${t.daysAgo} (${lastSprayDateStr}) ആണ്. ${t.sprayingRequirementNotice}` 
-                  : `Last chemical spray was ${daysSinceLastSpray} ${t.daysAgo} (${lastSprayDateStr}). ${t.sprayingRequirementNotice}`)
-                : (language === 'ml' 
-                  ? `വിള നട്ടിട്ട് ${daysSinceLastSpray} ദിവസമായി, ഇതുവരെ മരുന്ന് തളിച്ചിട്ടില്ല. ${t.sprayingRequirementNotice}`
-                  : `Planted ${daysSinceLastSpray} ${t.daysAgo}, and has never been sprayed. ${t.sprayingRequirementNotice}`)
-              }
-            </Text>
-          </View>
-        )}
-
-        {/* Header Block */}
-        {!isGoat && (
-          <View style={styles.detailHeaderCard}>
-            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
-              <Text style={styles.detailType}>{(selectedCrop.type || '').toUpperCase()} • {(selectedCrop.variety || 'Standard Variety').toUpperCase()}</Text>
-              <View style={{ backgroundColor: getStageColor(selectedCrop.stage), paddingHorizontal: 10, paddingVertical: 4, borderRadius: 12 }}>
-                <Text style={{ color: '#ffffff', fontSize: 10, fontWeight: '800' }}>
-                  {translateStage(selectedCrop.stage, language, isGoat)}
-                </Text>
-              </View>
-            </View>
-            <Text style={styles.detailTitle}>{selectedCrop.name}</Text>
-            <Text style={styles.detailSub}>{selectedCrop.field}</Text>
-            
-            <View style={styles.datesContainer}>
-              <View style={styles.dateBlock}>
-                <Text style={styles.dateLabel}>{isGoat ? (language === 'ml' ? 'ആരംഭിച്ച തീയതി' : 'Start Date') : t.planted}</Text>
-                <Text style={styles.dateVal}>{selectedCrop.plantingDate}</Text>
-              </View>
-              <View style={styles.dateBlock}>
-                <Text style={styles.dateLabel}>{isGoat ? (language === 'ml' ? 'പ്രതീക്ഷിക്കുന്ന വിൽപന' : 'Expected Sale') : t.estHarvest}</Text>
-                <Text style={styles.dateVal}>{selectedCrop.expectedHarvestDate}</Text>
-              </View>
-            </View>
-
-            {selectedCrop.notes ? (
-              <Text style={styles.notesText}>💡 {selectedCrop.notes}</Text>
-            ) : null}
-          </View>
-        )}
 
         {/* Sheep Inventory Card */}
         {isGoat && (
@@ -733,121 +541,107 @@ export default function CropsTab({
             </View>
 
             {/* Direct Log Actions */}
-            {isGoat ? (
-              <View style={styles.goatActionsRow}>
-                {/* Row 1 */}
-                <TouchableOpacity 
-                  style={[styles.goatActionBtn, { backgroundColor: '#1b3a1e' }]} 
-                  onPress={() => {
-                    setWorkActivity('Buying');
-                    setWorkDate(new Date().toISOString().split('T')[0]);
-                    setWorkNotes('');
-                    setWorkMalesCount('');
-                    setWorkFemalesCount('');
-                    setWorkBreededGoat('');
-                    setWorkMotherGoat('');
-                    setWorkMaterialCost('');
-                    setShowWorkLogModal(true);
-                  }}
-                >
-                  <Text style={styles.detailActionBtnText}>🛒 {language === 'ml' ? 'ചെമ്മരിയാടുകളെ വാങ്ങുക' : 'Buy Sheep'}</Text>
-                </TouchableOpacity>
+            <View style={styles.goatActionsRow}>
+              {/* Row 1 */}
+              <TouchableOpacity 
+                style={[styles.goatActionBtn, { backgroundColor: '#1b3a1e' }]} 
+                onPress={() => {
+                  setWorkActivity('Buying');
+                  setWorkDate(new Date().toISOString().split('T')[0]);
+                  setWorkNotes('');
+                  setWorkMalesCount('');
+                  setWorkFemalesCount('');
+                  setWorkBreededGoat('');
+                  setWorkMotherGoat('');
+                  setWorkMaterialCost('');
+                  setShowWorkLogModal(true);
+                }}
+              >
+                <Text style={styles.detailActionBtnText}>🛒 {language === 'ml' ? 'ചെമ്മരിയാടുകളെ വാങ്ങുക' : 'Buy Sheep'}</Text>
+              </TouchableOpacity>
 
-                <TouchableOpacity 
-                  style={[styles.goatActionBtn, { backgroundColor: '#2e7d32' }]} 
-                  onPress={() => {
-                    setEarningsItem(language === 'ml' ? 'ചെമ്മരിയാടുകളെ വിറ്റത്' : 'Sheep Sold');
-                    setEarningsMalesCount('');
-                    setEarningsFemalesCount('');
-                    setEarningsKidsCount('');
-                    setEarningsTotalAmount('');
-                    setEarningsDate(new Date().toISOString().split('T')[0]);
-                    setEarningsNotes('');
-                    setShowEarningsModal(true);
-                  }}
-                >
-                  <Text style={styles.detailActionBtnText}>💰 {language === 'ml' ? 'ചെമ്മരിയാടുകളെ വിൽക്കുക' : 'Sell Sheep'}</Text>
-                </TouchableOpacity>
+              <TouchableOpacity 
+                style={[styles.goatActionBtn, { backgroundColor: '#2e7d32' }]} 
+                onPress={() => {
+                  setEarningsItem(language === 'ml' ? 'ചെമ്മരിയാടുകളെ വിറ്റത്' : 'Sheep Sold');
+                  setEarningsMalesCount('');
+                  setEarningsFemalesCount('');
+                  setEarningsKidsCount('');
+                  setEarningsTotalAmount('');
+                  setEarningsDate(new Date().toISOString().split('T')[0]);
+                  setEarningsNotes('');
+                  setShowEarningsModal(true);
+                }}
+              >
+                <Text style={styles.detailActionBtnText}>💰 {language === 'ml' ? 'ചെമ്മരിയാടുകളെ വിൽക്കുക' : 'Sell Sheep'}</Text>
+              </TouchableOpacity>
 
-                {/* Row 2 */}
-                <TouchableOpacity 
-                  style={[styles.goatActionBtn, { backgroundColor: '#8d6e63' }]} 
-                  onPress={() => {
-                    setWorkActivity('Breeding');
-                    setWorkDate(new Date().toISOString().split('T')[0]);
-                    setWorkNotes('');
-                    setWorkMalesCount('');
-                    setWorkFemalesCount('');
-                    setWorkBreededGoat('');
-                    setWorkMotherGoat('');
-                    setWorkMaterialCost('');
-                    setShowWorkLogModal(true);
-                  }}
-                >
-                  <Text style={styles.detailActionBtnText}>💕 {language === 'ml' ? 'ഇണചേർക്കൽ' : 'Log Breeding'}</Text>
-                </TouchableOpacity>
+              {/* Row 2 */}
+              <TouchableOpacity 
+                style={[styles.goatActionBtn, { backgroundColor: '#8d6e63' }]} 
+                onPress={() => {
+                  setWorkActivity('Breeding');
+                  setWorkDate(new Date().toISOString().split('T')[0]);
+                  setWorkNotes('');
+                  setWorkMalesCount('');
+                  setWorkFemalesCount('');
+                  setWorkBreededGoat('');
+                  setWorkMotherGoat('');
+                  setWorkMaterialCost('');
+                  setShowWorkLogModal(true);
+                }}
+              >
+                <Text style={styles.detailActionBtnText}>💕 {language === 'ml' ? 'ഇണചേർക്കൽ' : 'Log Breeding'}</Text>
+              </TouchableOpacity>
 
-                <TouchableOpacity 
-                  style={[styles.goatActionBtn, { backgroundColor: '#4caf50' }]} 
-                  onPress={() => {
-                    setWorkActivity('New Babies');
-                    setWorkDate(new Date().toISOString().split('T')[0]);
-                    setWorkNotes('');
-                    setWorkMalesCount('');
-                    setWorkFemalesCount('');
-                    setWorkBreededGoat('');
-                    setWorkMotherGoat('');
-                    setShowWorkLogModal(true);
-                  }}
-                >
-                  <Text style={styles.detailActionBtnText}>👶 {language === 'ml' ? 'പ്രസവം / കുഞ്ഞുങ്ങൾ' : 'New Borns'}</Text>
-                </TouchableOpacity>
+              <TouchableOpacity 
+                style={[styles.goatActionBtn, { backgroundColor: '#4caf50' }]} 
+                onPress={() => {
+                  setWorkActivity('New Babies');
+                  setWorkDate(new Date().toISOString().split('T')[0]);
+                  setWorkNotes('');
+                  setWorkMalesCount('');
+                  setWorkFemalesCount('');
+                  setWorkBreededGoat('');
+                  setWorkMotherGoat('');
+                  setShowWorkLogModal(true);
+                }}
+              >
+                <Text style={styles.detailActionBtnText}>👶 {language === 'ml' ? 'പ്രസവം / കുഞ്ഞുങ്ങൾ' : 'New Borns'}</Text>
+              </TouchableOpacity>
 
-                {/* Row 3 */}
-                <TouchableOpacity 
-                  style={[styles.goatActionBtn, { backgroundColor: '#ff9800' }]} 
-                  onPress={() => {
-                    setFeedType('');
-                    setFeedQty('');
-                    setFeedCost('');
-                    setFeedNotes('');
-                    setFeedDate(new Date().toISOString().split('T')[0]);
-                    setShowFeedModal(true);
-                  }}
-                >
-                  <Text style={styles.detailActionBtnText}>🌾 {language === 'ml' ? 'തീറ്റ ചിലവ്' : 'Food Expenses'}</Text>
-                </TouchableOpacity>
+              {/* Row 3 */}
+              <TouchableOpacity 
+                style={[styles.goatActionBtn, { backgroundColor: '#ff9800' }]} 
+                onPress={() => {
+                  setFeedType('');
+                  setFeedQty('');
+                  setFeedCost('');
+                  setFeedNotes('');
+                  setFeedDate(new Date().toISOString().split('T')[0]);
+                  setShowFeedModal(true);
+                }}
+              >
+                <Text style={styles.detailActionBtnText}>🌾 {language === 'ml' ? 'തീറ്റ ചിലവ്' : 'Food Expenses'}</Text>
+              </TouchableOpacity>
 
-                <TouchableOpacity 
-                  style={[styles.goatActionBtn, { backgroundColor: '#c62828' }]} 
-                  onPress={() => {
-                    setWorkActivity('Medical / Vaccine');
-                    setWorkDate(new Date().toISOString().split('T')[0]);
-                    setWorkNotes('');
-                    setWorkMalesCount('');
-                    setWorkFemalesCount('');
-                    setWorkBreededGoat('');
-                    setWorkMotherGoat('');
-                    setWorkMaterialCost('');
-                    setShowWorkLogModal(true);
-                  }}
-                >
-                  <Text style={styles.detailActionBtnText}>💊 {language === 'ml' ? 'മരുന്ന് / വാക്സിൻ ചിലവ്' : 'Medical Exp'}</Text>
-                </TouchableOpacity>
-              </View>
-            ) : (
-              <View style={styles.detailActionsRow}>
-                <TouchableOpacity style={styles.detailActionBtn} onPress={() => setShowWorkLogModal(true)}>
-                  <Text style={styles.detailActionBtnText}>➕ {t.logWork}</Text>
-                </TouchableOpacity>
-                <TouchableOpacity style={[styles.detailActionBtn, { backgroundColor: '#4caf50' }]} onPress={() => setShowInputChoiceModal(true)}>
-                  <Text style={styles.detailActionBtnText}>🧪 {t.sprayOrManure}</Text>
-                </TouchableOpacity>
-                <TouchableOpacity style={[styles.detailActionBtn, { backgroundColor: '#2e7d32' }]} onPress={() => setShowEarningsModal(true)}>
-                  <Text style={styles.detailActionBtnText}>💰 {t.addEarnings}</Text>
-                </TouchableOpacity>
-              </View>
-            )}
+              <TouchableOpacity 
+                style={[styles.goatActionBtn, { backgroundColor: '#c62828' }]} 
+                onPress={() => {
+                  setWorkActivity('Medical / Vaccine');
+                  setWorkDate(new Date().toISOString().split('T')[0]);
+                  setWorkNotes('');
+                  setWorkMalesCount('');
+                  setWorkFemalesCount('');
+                  setWorkBreededGoat('');
+                  setWorkMotherGoat('');
+                  setWorkMaterialCost('');
+                  setShowWorkLogModal(true);
+                }}
+              >
+                <Text style={styles.detailActionBtnText}>💊 {language === 'ml' ? 'മരുന്ന് / വാക്സിൻ ചിലവ്' : 'Medical Exp'}</Text>
+              </TouchableOpacity>
+            </View>
 
             {/* Work Timeline */}
             <Text style={styles.sectionTitle}>{t.timelineActivities}</Text>
@@ -955,7 +749,7 @@ export default function CropsTab({
                             {t.laborCost}: ₹{log.laborCost} | {language === 'ml' ? 'സാധനങ്ങൾ' : 'Mat'}: ₹{log.materialCost}
                           </Text>
                         )}
-                        <TouchableOpacity style={styles.miniDeleteBtn} onPress={() => onDeleteWorkLog(log.id)}>
+                        <TouchableOpacity style={styles.miniDeleteBtn} onPress={() => handleDeleteActivity(log.id)}>
                           <Text style={styles.miniDeleteBtnText}>{language === 'ml' ? 'ഡിലീറ്റ്' : 'Delete'}</Text>
                         </TouchableOpacity>
                       </View>
@@ -964,73 +758,7 @@ export default function CropsTab({
                 ))}
               </View>
             )}
-
-            {/* Pesticide Logs */}
-            {cropPestLogs.length > 0 && (
-              <>
-                <Text style={styles.sectionTitle}>{t.pesticideApplications}</Text>
-                {cropPestLogs.map((pest) => (
-                  <View key={pest.id} style={styles.pestLogCard}>
-                    <View style={styles.pestLogHeader}>
-                      <Text style={styles.pestName}>{pest.pesticideName}</Text>
-                      <Text style={styles.pestCost}>{pest.date}</Text>
-                    </View>
-                    <View style={styles.pestGrid}>
-                      <View style={styles.pestGridItem}>
-                        <Text style={styles.pestGridLabel}>{language === 'ml' ? 'അളവ് / തോത്' : 'DOSAGE'}</Text>
-                        <Text style={styles.pestGridVal}>{pest.dosage || 'Not specified'}</Text>
-                      </View>
-                      <View style={styles.pestGridItem}>
-                        <Text style={styles.pestGridLabel}>{language === 'ml' ? 'ലായനിയുടെ അളവ്' : 'QUANTITY MIXED'}</Text>
-                        <Text style={styles.pestGridVal}>{pest.appliedQuantity || 'Not specified'}</Text>
-                      </View>
-                      {pest.targetPest ? (
-                        <View style={styles.pestGridItem}>
-                          <Text style={styles.pestGridLabel}>{language === 'ml' ? 'രോഗം / കീടം' : 'TARGET PEST'}</Text>
-                          <Text style={styles.pestGridVal}>{pest.targetPest}</Text>
-                        </View>
-                      ) : null}
-                      {pest.noOfWorkers ? (
-                        <View style={styles.pestGridItem}>
-                          <Text style={styles.pestGridLabel}>👨‍🌾 {t.noOfWorkers}</Text>
-                          <Text style={styles.pestGridVal}>{pest.noOfWorkers} (₹{pest.laborCostPerWorker}/worker)</Text>
-                        </View>
-                      ) : null}
-                      {pest.cost ? (
-                        <View style={styles.pestGridItem}>
-                          <Text style={styles.pestGridLabel}>{t.pesticideCost}</Text>
-                          <Text style={styles.pestGridVal}>₹{pest.cost}</Text>
-                        </View>
-                      ) : null}
-                      {pest.reentryHours ? (
-                        <View style={styles.pestGridItem}>
-                          <Text style={styles.pestGridLabel}>{language === 'ml' ? 'പ്രവേശന വിലക്ക്' : 'RE-ENTRY'}</Text>
-                          <Text style={styles.pestGridVal}>{pest.reentryHours} {language === 'ml' ? 'മണിക്കൂർ' : 'Hours'}</Text>
-                        </View>
-                      ) : null}
-                      {pest.withholdingDays ? (
-                        <View style={styles.pestGridItem}>
-                          <Text style={styles.pestGridLabel}>{language === 'ml' ? 'വിളവെടുപ്പ് വിലക്ക്' : 'WITHHOLDING'}</Text>
-                          <Text style={[styles.pestGridVal, { color: '#dc3545', fontWeight: '700' }]}>{pest.withholdingDays} {language === 'ml' ? 'ദിവസം' : 'Days'}</Text>
-                        </View>
-                      ) : null}
-                    </View>
-                    <TouchableOpacity style={styles.miniDeleteBtn} onPress={() => onDeletePesticideLog(pest.id)}>
-                      <Text style={styles.miniDeleteBtnText}>{language === 'ml' ? 'ഒഴിവാക്കുക' : 'Delete Spray'}</Text>
-                    </TouchableOpacity>
-                  </View>
-                ))}
-              </>
-            )}
-
-            {/* Delete crop cycle */}
-            {!isGoatSingleton && (
-              <TouchableOpacity style={styles.deleteBtn} onPress={handleDelete}>
-                <Text style={styles.deleteBtnText}>{t.deleteCropCycle}</Text>
-              </TouchableOpacity>
-            )}
           </>
-
       </ScrollView>
 
       {/* Log Work Modal */}
@@ -1305,145 +1033,7 @@ export default function CropsTab({
         </View>
       </Modal>
 
-      {/* Spray Log Modal */}
-      <Modal visible={showSprayLogModal} animationType="slide" transparent={true}>
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalContent}>
-            <Text style={styles.modalTitle}>{t.sprayLog}</Text>
-            
-            <ScrollView style={styles.modalForm}>
-              <Text style={styles.inputLabel}>{t.pesticideProductName}</Text>
-              <TextInput 
-                style={styles.input} 
-                placeholder="e.g. Copper Fungicide, Neem Oil" 
-                value={sprayPesticideName} 
-                onChangeText={setSprayPesticideName} 
-              />
 
-              <View style={styles.row}>
-                <View style={styles.col}>
-                  <Text style={styles.inputLabel}>{t.targetPest}</Text>
-                  <TextInput 
-                    style={styles.input} 
-                    placeholder="e.g. Thrips, Wilt" 
-                    value={sprayTargetPest} 
-                    onChangeText={setSprayTargetPest} 
-                  />
-                </View>
-                <View style={styles.col}>
-                  <Text style={styles.inputLabel}>{t.activeIngredient}</Text>
-                  <TextInput 
-                    style={styles.input} 
-                    placeholder="e.g. Copper" 
-                    value={sprayActiveIngredient} 
-                    onChangeText={setSprayActiveIngredient} 
-                  />
-                </View>
-              </View>
-
-              <View style={styles.row}>
-                <View style={styles.col}>
-                  <Text style={styles.inputLabel}>{t.dosageRate}</Text>
-                  <TextInput 
-                    style={styles.input} 
-                    placeholder="e.g. 15ml / Litre" 
-                    value={sprayDosage} 
-                    onChangeText={setSprayDosage} 
-                  />
-                </View>
-                <View style={styles.col}>
-                  <Text style={styles.inputLabel}>{language === 'ml' ? 'ലായനിയുടെ അളവ്' : 'Quantity Mixed'}</Text>
-                  <TextInput 
-                    style={styles.input} 
-                    placeholder="e.g. 20 Litres" 
-                    value={sprayQuantity} 
-                    onChangeText={setSprayQuantity} 
-                  />
-                </View>
-              </View>
-
-              <View style={styles.row}>
-                <View style={styles.col}>
-                  <Text style={styles.inputLabel}>{t.reentryHours}</Text>
-                  <TextInput 
-                    style={styles.input} 
-                    keyboardType="numeric"
-                    placeholder="e.g. 24" 
-                    value={sprayReentryHours} 
-                    onChangeText={setSprayReentryHours} 
-                  />
-                </View>
-                <View style={styles.col}>
-                  <Text style={styles.inputLabel}>{t.withholdingDays}</Text>
-                  <TextInput 
-                    style={styles.input} 
-                    keyboardType="numeric"
-                    placeholder="e.g. 7" 
-                    value={sprayWithholdingDays} 
-                    onChangeText={setSprayWithholdingDays} 
-                  />
-                </View>
-              </View>
-
-              <View style={styles.row}>
-                <View style={styles.col}>
-                  <Text style={styles.inputLabel}>{t.noOfWorkers}</Text>
-                  <TextInput 
-                    style={styles.input} 
-                    keyboardType="numeric" 
-                    placeholder="e.g. 2" 
-                    value={sprayWorkers} 
-                    onChangeText={setSprayWorkers} 
-                  />
-                </View>
-                <View style={styles.col}>
-                  <Text style={styles.inputLabel}>{t.laborCostPerWorker}</Text>
-                  <TextInput 
-                    style={styles.input} 
-                    keyboardType="numeric" 
-                    placeholder="e.g. 600" 
-                    value={sprayLaborCostPerWorker} 
-                    onChangeText={setSprayLaborCostPerWorker} 
-                  />
-                </View>
-              </View>
-
-              <Text style={styles.inputLabel}>{t.pesticideCostLabel}</Text>
-              <TextInput 
-                style={styles.input} 
-                keyboardType="numeric"
-                placeholder="e.g. 800"
-                value={sprayPesticideCost} 
-                onChangeText={setSprayPesticideCost} 
-              />
-
-              {/* Auto Calculated Previews */}
-              <View style={styles.autoCalcBox}>
-                <Text style={styles.autoCalcLabel}>{t.totalLaborCost}</Text>
-                <Text style={styles.autoCalcVal}>₹{liveSprayLaborCost.toLocaleString('en-US')}</Text>
-              </View>
-              
-              <View style={[styles.autoCalcBox, { backgroundColor: '#e8f5e9', borderColor: '#c8e6c9' }]}>
-                <Text style={[styles.autoCalcLabel, { color: '#2e7d32' }]}>{language === 'ml' ? 'ആകെ കണക്കാക്കിയ ചിലവ്' : 'Estimated Total Cost'}</Text>
-                <Text style={[styles.autoCalcVal, { color: '#2e7d32' }]}>₹{liveSprayTotalCost.toLocaleString('en-US')}</Text>
-              </View>
-              <Text style={styles.helperText}>{t.pesticideHelper}</Text>
-
-              <Text style={styles.inputLabel}>{t.date}</Text>
-              <TextInput style={styles.input} value={sprayDate} onChangeText={setSprayDate} />
-            </ScrollView>
-
-            <View style={styles.modalActions}>
-              <TouchableOpacity style={[styles.modalBtn, styles.cancelBtn]} onPress={() => setShowSprayLogModal(false)}>
-                <Text style={styles.cancelBtnText}>{t.cancel}</Text>
-              </TouchableOpacity>
-              <TouchableOpacity style={[styles.modalBtn, styles.saveBtn]} onPress={handleAddSprayLogSubmit}>
-                <Text style={styles.saveBtnText}>{t.recordSprayBtn}</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-        </View>
-      </Modal>
 
       {/* Record Earnings Modal */}
       <Modal visible={showEarningsModal} animationType="slide" transparent={true}>
@@ -1468,8 +1058,6 @@ export default function CropsTab({
                 onChangeText={setEarningsItem} 
               />
 
-              {isGoat ? (
-                <>
                   <View style={styles.row}>
                     <View style={styles.col}>
                       <Text style={styles.inputLabel}>{language === 'ml' ? 'വിറ്റ ആൺ ആടുകൾ' : 'Males Sold'}</Text>
@@ -1514,71 +1102,6 @@ export default function CropsTab({
                       />
                     </View>
                   </View>
-                </>
-              ) : (
-                <>
-                  <View style={styles.row}>
-                    <View style={styles.col}>
-                      <Text style={styles.inputLabel}>{t.quantitySold}</Text>
-                      <TextInput 
-                        style={styles.input} 
-                        keyboardType="numeric" 
-                        placeholder="e.g. 50" 
-                        value={earningsQuantity} 
-                        onChangeText={setEarningsQuantity} 
-                      />
-                    </View>
-                    <View style={styles.col}>
-                      <Text style={styles.inputLabel}>{t.pricePerKg}</Text>
-                      <TextInput 
-                        style={styles.input} 
-                        keyboardType="numeric" 
-                        placeholder="e.g. 600" 
-                        value={earningsPricePerKg} 
-                        onChangeText={setEarningsPricePerKg} 
-                      />
-                    </View>
-                  </View>
-
-                  {isCardamom && (
-                    <View style={styles.row}>
-                      <View style={styles.col}>
-                        <Text style={styles.inputLabel}>{t.rawWeightOptional}</Text>
-                        <TextInput 
-                          style={styles.input} 
-                          keyboardType="numeric" 
-                          placeholder={t.rawWeightPlaceholder} 
-                          value={earningsRawYield} 
-                          onChangeText={setEarningsRawYield} 
-                        />
-                      </View>
-                      <View style={styles.col} />
-                    </View>
-                  )}
-
-                  {(isPepper || isCardamom) && (
-                    <View style={styles.row}>
-                      <View style={styles.col}>
-                        <Text style={styles.inputLabel}>{t.processingCharge}</Text>
-                        <TextInput 
-                          style={styles.input} 
-                          keyboardType="numeric" 
-                          placeholder={t.processingChargePlaceholder} 
-                          value={earningsProcessingCharge} 
-                          onChangeText={setEarningsProcessingCharge} 
-                        />
-                      </View>
-                      <View style={styles.col} />
-                    </View>
-                  )}
-
-                  {/* Auto Calculated Preview */}
-                  <View style={[styles.autoCalcBox, { backgroundColor: '#e8f5e9', borderColor: '#c8e6c9' }]}>
-                    <Text style={[styles.autoCalcLabel, { color: '#2e7d32' }]}>{t.totalAmount}</Text>
-                    <Text style={[styles.autoCalcVal, { color: '#2e7d32' }]}>₹{liveEarningsTotalAmount.toLocaleString('en-US')}</Text>
-                  </View>
-                </>
-              )}
 
               <Text style={styles.inputLabel}>{t.date}</Text>
               <TextInput style={styles.input} value={earningsDate} onChangeText={setEarningsDate} />
@@ -1599,135 +1122,180 @@ export default function CropsTab({
         </View>
       </Modal>
 
-      {/* Input Choice Modal */}
-      <Modal visible={showInputChoiceModal} animationType="fade" transparent={true}>
-        <View style={styles.choiceModalOverlay}>
-          <View style={styles.choiceModalContent}>
-            <Text style={styles.choiceModalTitle}>{t.selectInputType}</Text>
-            
-            <View style={styles.choiceButtonsRow}>
-              <TouchableOpacity 
-                style={[styles.choiceCard, { borderColor: '#4caf50' }]} 
-                onPress={() => {
-                  setShowInputChoiceModal(false);
-                  setShowSprayLogModal(true);
-                }}
-              >
-                <Text style={styles.choiceCardIcon}>🧪</Text>
-                <Text style={styles.choiceCardTitle}>{t.recordSprayMenu}</Text>
-              </TouchableOpacity>
 
-              <TouchableOpacity 
-                style={[styles.choiceCard, { borderColor: '#8d6e63' }]} 
-                onPress={() => {
-                  setShowInputChoiceModal(false);
-                  setShowManureLogModal(true);
-                }}
-              >
-                <Text style={styles.choiceCardIcon}>🍂</Text>
-                <Text style={styles.choiceCardTitle}>{t.recordManureMenu}</Text>
+
+      {/* Adjust Inventory Modal */}
+      <Modal visible={showAdjustModal} animationType="slide" transparent={true}>
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <Text style={styles.modalTitle}>
+              ⚙️ {language === 'ml' ? 'എണ്ണം ക്രമീകരിക്കുക / തിരുത്തുക' : 'Adjust Inventory'}
+            </Text>
+            <Text style={{ fontSize: 13, color: '#666', marginBottom: 15, lineHeight: 18 }}>
+              {language === 'ml' 
+                ? 'നിലവിലുള്ള ചെമ്മരിയാടുകളുടെ എണ്ണം ഇവിടെ നേരിട്ട് മാറ്റിയെഴുതാവുന്നതാണ്. ഇത് മുൻപുള്ള വിവരങ്ങളെ ബാധിക്കില്ല.' 
+                : 'Directly override the counts of your sheep in stock. This manual adjustment won\'t affect historical logs.'}
+            </Text>
+
+            <ScrollView style={styles.modalForm}>
+              <Text style={styles.inputLabel}>{language === 'ml' ? 'ആൺ ചെമ്മരിയാടുകൾ' : 'Males'}</Text>
+              <TextInput 
+                style={styles.input} 
+                keyboardType="numeric" 
+                value={adjustMales} 
+                onChangeText={setAdjustMales} 
+              />
+
+              <Text style={styles.inputLabel}>{language === 'ml' ? 'പെൺ ചെമ്മരിയാടുകൾ' : 'Females'}</Text>
+              <TextInput 
+                style={styles.input} 
+                keyboardType="numeric" 
+                value={adjustFemales} 
+                onChangeText={setAdjustFemales} 
+              />
+
+              <Text style={styles.inputLabel}>{language === 'ml' ? 'കുട്ടികൾ' : 'Lambs'}</Text>
+              <TextInput 
+                style={styles.input} 
+                keyboardType="numeric" 
+                value={adjustKids} 
+                onChangeText={setAdjustKids} 
+              />
+            </ScrollView>
+
+            <View style={styles.modalActions}>
+              <TouchableOpacity style={[styles.modalBtn, styles.cancelBtn]} onPress={() => setShowAdjustModal(false)}>
+                <Text style={styles.cancelBtnText}>{t.cancel}</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={[styles.modalBtn, styles.saveBtn, { backgroundColor: '#1b3a1e' }]} onPress={handleAdjustInventorySubmit}>
+                <Text style={styles.saveBtnText}>{language === 'ml' ? 'മാറ്റം വരുത്തുക' : 'Update Counts'}</Text>
               </TouchableOpacity>
             </View>
+          </View>
+        </View>
+      </Modal>
+      {/* Stage Count / Manual Entry Modal */}
+      <Modal visible={showStageCountModal} animationType="slide" transparent={true}>
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <Text style={styles.modalTitle}>
+              🐑 {translateStage(targetStageForModal, language, true)}
+            </Text>
+            <Text style={{ fontSize: 13, color: '#666', marginBottom: 15, lineHeight: 18 }}>
+              {language === 'ml' 
+                ? `ഈ ഘട്ടത്തിലുള്ള ചെമ്മരിയാടുകളുടെ എണ്ണം പരിശോധിക്കുകയോ നേരിട്ട് മാറ്റി എഴുതുകയോ ചെയ്യാം.` 
+                : `View or manually enter the number of sheep currently in this growth stage.`}
+            </Text>
 
-            <TouchableOpacity style={styles.choiceCancelBtn} onPress={() => setShowInputChoiceModal(false)}>
-              <Text style={styles.choiceCancelBtnText}>{t.cancel}</Text>
-            </TouchableOpacity>
+            <Text style={styles.inputLabel}>
+              {language === 'ml' ? 'ചെമ്മരിയാടുകളുടെ എണ്ണം *' : 'Number of Sheep *'}
+            </Text>
+            <TextInput 
+              style={styles.input} 
+              keyboardType="numeric" 
+              placeholder="e.g. 10"
+              value={stageCountValue} 
+              onChangeText={setStageCountValue} 
+            />
+
+            <View style={{ gap: 10, marginTop: 15, width: '100%' }}>
+              <TouchableOpacity 
+                style={[styles.saveFeedBtn, { backgroundColor: '#1b3a1e', marginTop: 0 }]} 
+                onPress={() => handleStageCountSubmit(true)}
+              >
+                <Text style={styles.saveFeedBtnText}>
+                  ✔️ {language === 'ml' ? 'സജീവ ഘട്ടമാക്കുക & സംരക്ഷിക്കുക' : 'Set Active Stage & Save'}
+                </Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity 
+                style={[styles.saveFeedBtn, { backgroundColor: '#8d6e63', marginTop: 0 }]} 
+                onPress={() => handleStageCountSubmit(false)}
+              >
+                <Text style={styles.saveFeedBtnText}>
+                  💾 {language === 'ml' ? 'എണ്ണം മാത്രം സംരക്ഷിക്കുക' : 'Save Count Only'}
+                </Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity 
+                style={[styles.modalBtn, styles.cancelBtn, { alignSelf: 'center', marginTop: 5 }]} 
+                onPress={() => setShowStageCountModal(false)}
+              >
+                <Text style={styles.cancelBtnText}>{t.cancel}</Text>
+              </TouchableOpacity>
+            </View>
           </View>
         </View>
       </Modal>
 
-      {/* Record Manure Modal */}
-      <Modal visible={showManureLogModal} animationType="slide" transparent={true}>
+      {/* Food Expenses Modal */}
+      <Modal visible={showFeedModal} animationType="slide" transparent={true}>
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
-            <Text style={styles.modalTitle}>{t.recordManureMenu}</Text>
+            <Text style={styles.modalTitle}>
+              🌾 {language === 'ml' ? 'തീറ്റ ചിലവ് രേഖപ്പെടുത്തുക' : 'Log Feed Expense'}
+            </Text>
             
             <ScrollView style={styles.modalForm}>
-              <Text style={styles.inputLabel}>{t.manureNameLabel}</Text>
-              <TextInput 
-                style={styles.input} 
-                placeholder="e.g. Cow Dung, Compost" 
-                value={manureLogName} 
-                onChangeText={setManureLogName} 
+              <Text style={styles.inputLabel}>{language === 'ml' ? 'തീറ്റയുടെ ഇനം *' : 'Feed Type *'}</Text>
+              <TextInput
+                style={styles.input}
+                placeholder={language === 'ml' ? 'ഉദാ: പുല്ല്, ആട്ടിൻ തീറ്റ, തവിട്' : 'e.g. Grass, Goat Feed, Bran'}
+                value={feedType}
+                onChangeText={setFeedType}
               />
 
               <View style={styles.row}>
                 <View style={styles.col}>
-                  <Text style={styles.inputLabel}>{t.manureQuantity}</Text>
-                  <TextInput 
-                    style={styles.input} 
+                  <Text style={styles.inputLabel}>{language === 'ml' ? 'അളവ് (Kg)' : 'Quantity (Kg)'}</Text>
+                  <TextInput
+                    style={styles.input}
                     keyboardType="numeric"
-                    placeholder="e.g. 100" 
-                    value={manureLogQty} 
-                    onChangeText={setManureLogQty} 
+                    placeholder="e.g. 25"
+                    value={feedQty}
+                    onChangeText={setFeedQty}
                   />
                 </View>
                 <View style={styles.col}>
-                  <Text style={styles.inputLabel}>{t.manureCostLabel}</Text>
-                  <TextInput 
-                    style={styles.input} 
-                    keyboardType="numeric" 
-                    placeholder="e.g. 500" 
-                    value={manureLogCost} 
-                    onChangeText={setManureLogCost} 
+                  <Text style={styles.inputLabel}>{language === 'ml' ? 'ചിലവ് തുക (₹) *' : 'Cost Amount (₹) *'}</Text>
+                  <TextInput
+                    style={styles.input}
+                    keyboardType="numeric"
+                    placeholder="e.g. 800"
+                    value={feedCost}
+                    onChangeText={setFeedCost}
                   />
                 </View>
               </View>
 
-              <View style={styles.row}>
-                <View style={styles.col}>
-                  <Text style={styles.inputLabel}>{t.noOfWorkers}</Text>
-                  <TextInput 
-                    style={styles.input} 
-                    keyboardType="numeric" 
-                    placeholder="e.g. 2" 
-                    value={manureLogWorkers} 
-                    onChangeText={setManureLogWorkers} 
-                  />
-                </View>
-                <View style={styles.col}>
-                  <Text style={styles.inputLabel}>{t.laborCostPerWorker}</Text>
-                  <TextInput 
-                    style={styles.input} 
-                    keyboardType="numeric" 
-                    placeholder="e.g. 600" 
-                    value={manureLogLaborCost} 
-                    onChangeText={setManureLogLaborCost} 
-                  />
-                </View>
-              </View>
+              <Text style={styles.inputLabel}>{language === 'ml' ? 'തീയതി *' : 'Date *'}</Text>
+              <TextInput
+                style={styles.input}
+                value={feedDate}
+                onChangeText={setFeedDate}
+              />
 
-              {/* Auto Calculated Previews */}
-              <View style={styles.autoCalcBox}>
-                <Text style={styles.autoCalcLabel}>{t.totalLaborCost}</Text>
-                <Text style={styles.autoCalcVal}>₹{liveManureLaborCost.toLocaleString('en-US')}</Text>
-              </View>
-
-              <View style={[styles.autoCalcBox, { backgroundColor: '#e8f5e9', borderColor: '#c8e6c9' }]}>
-                <Text style={[styles.autoCalcLabel, { color: '#2e7d32' }]}>{t.estimatedTotal}</Text>
-                <Text style={[styles.autoCalcVal, { color: '#2e7d32' }]}>₹{liveManureTotalCost.toLocaleString('en-US')}</Text>
-              </View>
-
-              <Text style={styles.inputLabel}>{t.date}</Text>
-              <TextInput style={styles.input} value={manureLogDate} onChangeText={setManureLogDate} />
-
-              <Text style={styles.inputLabel}>{t.notes}</Text>
-              <TextInput style={[styles.input, styles.textArea]} multiline={true} value={manureLogNotes} onChangeText={setManureLogNotes} />
+              <Text style={styles.inputLabel}>{language === 'ml' ? 'കുറിപ്പുകൾ' : 'Notes'}</Text>
+              <TextInput
+                style={[styles.input, styles.textArea]}
+                multiline={true}
+                placeholder={language === 'ml' ? 'അധിക വിവരങ്ങൾ...' : 'Additional notes...'}
+                value={feedNotes}
+                onChangeText={setFeedNotes}
+              />
             </ScrollView>
 
             <View style={styles.modalActions}>
-              <TouchableOpacity style={[styles.modalBtn, styles.cancelBtn]} onPress={() => setShowManureLogModal(false)}>
+              <TouchableOpacity style={[styles.modalBtn, styles.cancelBtn]} onPress={() => setShowFeedModal(false)}>
                 <Text style={styles.cancelBtnText}>{t.cancel}</Text>
               </TouchableOpacity>
-              <TouchableOpacity style={[styles.modalBtn, styles.saveBtn, { backgroundColor: '#8d6e63' }]} onPress={handleAddManureLogSubmit}>
-                <Text style={styles.saveBtnText}>{t.recordManureMenu}</Text>
+              <TouchableOpacity style={[styles.modalBtn, styles.saveBtn, { backgroundColor: '#ff9800' }]} onPress={handleAddFeedExpenseSubmit}>
+                <Text style={styles.saveFeedBtnText}>{language === 'ml' ? 'ചിലവ് സംരക്ഷിക്കുക' : 'Save Expense'}</Text>
               </TouchableOpacity>
             </View>
           </View>
         </View>
       </Modal>
-
-
     </View>
   );
 }

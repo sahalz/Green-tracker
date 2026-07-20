@@ -12,6 +12,16 @@ export interface Crop {
   expectedHarvestDate: string;
   stage: CropStage;
   notes: string;
+  malesCount?: number;
+  femalesCount?: number;
+  kidsCount?: number;
+  stageCountKid?: number;
+  stageCountGrower?: number;
+  stageCountBreeder?: number;
+  stageCountPregnant?: number;
+  stageCountLactating?: number;
+  stageCountArchived?: number;
+  fishCount?: number;
 }
 
 export interface WorkLog {
@@ -33,6 +43,14 @@ export interface WorkLog {
   noOfWorkers?: number;
   laborCostPerWorker?: number;
   pricePerKg?: number;
+  malesCount?: number;
+  femalesCount?: number;
+  kidsCount?: number;
+  breededGoat?: string;
+  motherGoat?: string;
+  kidsConverted?: boolean;
+  fishCount?: number;
+  phValue?: number;
 }
 
 export interface PesticideLog {
