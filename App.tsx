@@ -21,6 +21,7 @@ import {
 
 import Dashboard from './src/components/Dashboard';
 import CropsTab from './src/components/CropsTab';
+import { syncCardamomNotifications } from './src/notifications';
 
 const LANGUAGE_STORAGE_KEY = 'crop_monitor_language_v1';
 
@@ -69,6 +70,12 @@ export default function App() {
     setWorkLogs(w);
     setPesticideLogs(p);
   };
+
+  useEffect(() => {
+    if (!isLoading) {
+      syncCardamomNotifications(crops, pesticideLogs);
+    }
+  }, [crops, pesticideLogs, isLoading]);
 
   const handleLanguageToggle = async (lang: Language) => {
     setLanguage(lang);

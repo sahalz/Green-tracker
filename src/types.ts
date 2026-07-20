@@ -27,6 +27,8 @@ export interface WorkLog {
   notes: string;
   manureName?: string;
   yieldKg?: number;
+  rawYieldKg?: number;
+  processingCharge?: number;
   income?: number;
   noOfWorkers?: number;
   laborCostPerWorker?: number;

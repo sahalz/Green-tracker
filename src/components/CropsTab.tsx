@@ -50,11 +50,17 @@ export default function CropsTab({
                        workActivity.trim().includes('വിളവെടുപ്പ്') || 
                        workActivity.trim().includes('വിളവെടുക്');
   
+  const isCuring = workActivity.trim().toLowerCase().includes('curing') ||
+                   workActivity.trim().toLowerCase().includes('dry') ||
+                   workActivity.trim().includes('ഉണക്കൽ');
+  const isHarvestingOrCuring = isHarvesting || isCuring;
+  
   const [workWorkers, setWorkWorkers] = useState<string>('');
   const [workLaborCostPerWorker, setWorkLaborCostPerWorker] = useState<string>('');
   const [workDate, setWorkDate] = useState<string>(new Date().toISOString().split('T')[0]);
   const [workNotes, setWorkNotes] = useState<string>('');
   const [workYield, setWorkYield] = useState<string>('');
+  const [workRawYield, setWorkRawYield] = useState<string>('');
   const [workIncome, setWorkIncome] = useState<string>('');
 
   // Input Selection Modal State
@@ -88,11 +94,19 @@ export default function CropsTab({
   const [showEarningsModal, setShowEarningsModal] = useState(false);
   const [earningsItem, setEarningsItem] = useState<string>('');
   const [earningsQuantity, setEarningsQuantity] = useState<string>('');
+  const [earningsRawYield, setEarningsRawYield] = useState<string>('');
   const [earningsPricePerKg, setEarningsPricePerKg] = useState<string>('');
   const [earningsDate, setEarningsDate] = useState<string>(new Date().toISOString().split('T')[0]);
   const [earningsNotes, setEarningsNotes] = useState<string>('');
+  const [earningsProcessingCharge, setEarningsProcessingCharge] = useState<string>('');
 
   if (!selectedCrop) return null;
+
+  const isCardamom = selectedCrop.type.toLowerCase().includes('cardamom') || 
+                     selectedCrop.type.toLowerCase().includes('cardomom') || 
+                     selectedCrop.type.includes('ഏല');
+  const isPepper = selectedCrop.type.toLowerCase().includes('pepper') || 
+                   selectedCrop.type.includes('കുരുമുളക്');
 
   const cropWorkLogs = workLogs.filter(w => w.cropId === selectedCrop.id);
   const cropPestLogs = pesticideLogs.filter(p => (p.cropIds || []).includes(selectedCrop.id));
@@ -100,7 +114,8 @@ export default function CropsTab({
   const laborCost = cropWorkLogs.reduce((sum, l) => sum + l.laborCost, 0);
   const materialCost = cropWorkLogs.reduce((sum, l) => sum + l.materialCost, 0);
   const equipmentCost = cropWorkLogs.reduce((sum, l) => sum + l.equipmentCost, 0);
-  const totalCost = laborCost + materialCost + equipmentCost;
+  const processingCost = cropWorkLogs.reduce((sum, l) => sum + (l.processingCharge || 0), 0);
+  const totalCost = laborCost + materialCost + equipmentCost + processingCost;
   
   const totalRevenue = cropWorkLogs.reduce((sum, l) => sum + (l.income || 0), 0);
   const netProfit = totalRevenue - totalCost;
@@ -178,7 +193,8 @@ export default function CropsTab({
       noOfWorkers: workersNum,
       laborCostPerWorker: costPerWorkerNum,
       manureName: undefined,
-      yieldKg: isHarvesting ? (Number(workYield) || undefined) : undefined,
+      yieldKg: isHarvestingOrCuring ? (Number(workYield) || undefined) : undefined,
+      rawYieldKg: isHarvestingOrCuring && isCardamom ? (Number(workRawYield) || undefined) : undefined,
       income: isHarvesting ? (Number(workIncome) || undefined) : undefined,
     };
 
@@ -192,6 +208,7 @@ export default function CropsTab({
     setWorkDate(new Date().toISOString().split('T')[0]);
     setWorkNotes('');
     setWorkYield('');
+    setWorkRawYield('');
     setWorkIncome('');
   };
 
@@ -308,6 +325,8 @@ export default function CropsTab({
       notes: earningsNotes.trim(),
       manureName: earningsItem.trim(),
       yieldKg: qty,
+      rawYieldKg: isCardamom ? (Number(earningsRawYield) || undefined) : undefined,
+      processingCharge: (isPepper || isCardamom) ? (Number(earningsProcessingCharge) || undefined) : undefined,
       income: calculatedIncome,
       pricePerKg: rate,
     };
@@ -318,6 +337,8 @@ export default function CropsTab({
     // Reset earnings form
     setEarningsItem('');
     setEarningsQuantity('');
+    setEarningsRawYield('');
+    setEarningsProcessingCharge('');
     setEarningsPricePerKg('');
     setEarningsNotes('');
     setEarningsDate(new Date().toISOString().split('T')[0]);
@@ -333,6 +354,36 @@ export default function CropsTab({
 
   const liveManureLaborCost = (Number(manureLogWorkers) || 0) * (Number(manureLogLaborCost) || 0);
   const liveManureTotalCost = liveManureLaborCost + (Number(manureLogCost) || 0);
+
+  // Check if Cardamom and spraying is overdue (30 days)
+  const isCropActive = selectedCrop.stage !== 'Archived';
+  
+  let isSprayingOverdue = false;
+  let daysSinceLastSpray = 0;
+  let lastSprayDateStr = '';
+
+  if (isCardamom && isCropActive) {
+    const sortedSprays = cropPestLogs.sort(
+      (a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()
+    );
+
+    if (sortedSprays.length > 0) {
+      const lastSprayDate = new Date(sortedSprays[0].date);
+      lastSprayDateStr = sortedSprays[0].date;
+      const msDiff = Date.now() - lastSprayDate.getTime();
+      daysSinceLastSpray = Math.floor(msDiff / (24 * 60 * 60 * 1000));
+      if (daysSinceLastSpray > 30) {
+        isSprayingOverdue = true;
+      }
+    } else {
+      const plantingDate = new Date(selectedCrop.plantingDate);
+      const msDiff = Date.now() - plantingDate.getTime();
+      daysSinceLastSpray = Math.floor(msDiff / (24 * 60 * 60 * 1000));
+      if (daysSinceLastSpray > 30) {
+        isSprayingOverdue = true;
+      }
+    }
+  }
 
   return (
     <View style={styles.container}>
@@ -352,6 +403,25 @@ export default function CropsTab({
               {language === 'ml' 
                 ? `${warningPesticideName} ഉപയോഗിച്ചതിനാൽ അടുത്ത ${withholdingDaysLeft} ദിവസത്തേക്ക് വിളവെടുക്കരുത്.` 
                 : `Sprayed with ${warningPesticideName}. Do not harvest for the next ${withholdingDaysLeft} days.`
+              }
+            </Text>
+          </View>
+        )}
+
+        {/* Spraying Overdue Warning Banner */}
+        {isSprayingOverdue && (
+          <View style={[styles.withholdingAlertCard, { backgroundColor: '#fff3cd', borderColor: '#ffeeba' }]}>
+            <Text style={[styles.withholdingAlertTitle, { color: '#856404' }]}>
+              ⚠️ {t.sprayingOverdue}
+            </Text>
+            <Text style={[styles.withholdingAlertText, { color: '#856404' }]}>
+              {lastSprayDateStr 
+                ? (language === 'ml' 
+                  ? `അവസാനമായി മരുന്ന് തളിച്ചത് ${daysSinceLastSpray} ${t.daysAgo} (${lastSprayDateStr}) ആണ്. ${t.sprayingRequirementNotice}` 
+                  : `Last chemical spray was ${daysSinceLastSpray} ${t.daysAgo} (${lastSprayDateStr}). ${t.sprayingRequirementNotice}`)
+                : (language === 'ml' 
+                  ? `വിള നട്ടിട്ട് ${daysSinceLastSpray} ദിവസമായി, ഇതുവരെ മരുന്ന് തളിച്ചിട്ടില്ല. ${t.sprayingRequirementNotice}`
+                  : `Planted ${daysSinceLastSpray} ${t.daysAgo}, and has never been sprayed. ${t.sprayingRequirementNotice}`)
               }
             </Text>
           </View>
@@ -423,6 +493,18 @@ export default function CropsTab({
             </Text>
           </View>
 
+          {processingCost > 0 && (
+            <>
+              <View style={styles.ledgerDivider} />
+              <View style={styles.ledgerProfitRow}>
+                <Text style={[styles.ledgerProfitLabel, { fontWeight: 'normal', color: '#7f8c8d' }]}>⚙️ {language === 'ml' ? 'പ്രൊസസ്സിംഗ് ചിലവ്' : 'Processing Cost'}</Text>
+                <Text style={[styles.ledgerProfitValue, { fontSize: 16, color: '#2c3e50', fontWeight: '600' }]}>
+                  ₹{processingCost.toLocaleString('en-US', { maximumFractionDigits: 0 })}
+                </Text>
+              </View>
+            </>
+          )}
+
           <View style={styles.ledgerDivider} />
 
           <View style={styles.expenseSummaryBreakdown}>
@@ -482,10 +564,13 @@ export default function CropsTab({
                   <Text style={styles.timelineDate}>{log.date}</Text>
                   {log.notes ? <Text style={styles.timelineNotes}>{log.notes}</Text> : null}
                   
-                  {log.activityType === 'Harvesting' && (log.yieldKg || log.income) ? (
+                  {(log.activityType === 'Harvesting' || log.activityType === 'Curing') && (log.yieldKg || log.rawYieldKg || log.income) ? (
                     <View style={styles.timelineHarvestDetails}>
                       {log.yieldKg ? (
-                        <Text style={styles.timelineHarvestText}>📦 {t.yieldKg}: {log.yieldKg} kg</Text>
+                        <Text style={styles.timelineHarvestText}>📦 {log.activityType === 'Curing' && isCardamom ? (language === 'ml' ? 'ഉണങ്ങിയ അളവ്' : 'Dried Yield') : t.yieldKg}: {log.yieldKg} kg</Text>
+                      ) : null}
+                      {log.rawYieldKg ? (
+                        <Text style={styles.timelineHarvestText}>🌳 {t.rawWeight}: {log.rawYieldKg} kg</Text>
                       ) : null}
                       {log.income ? (
                         <Text style={styles.timelineHarvestText}>💰 {t.income}: ₹{log.income.toFixed(0)}</Text>
@@ -493,10 +578,16 @@ export default function CropsTab({
                     </View>
                   ) : null}
 
-                  {log.activityType === 'Revenue' && (log.yieldKg || log.income) ? (
+                  {log.activityType === 'Revenue' && (log.yieldKg || log.income || log.rawYieldKg || log.processingCharge) ? (
                     <View style={[styles.timelineHarvestDetails, { backgroundColor: '#e8f5e9', borderColor: '#c8e6c9' }]}>
                       {log.yieldKg ? (
                         <Text style={[styles.timelineHarvestText, { color: '#2e7d32' }]}>📦 {t.quantitySold}: {log.yieldKg} kg</Text>
+                      ) : null}
+                      {log.rawYieldKg ? (
+                        <Text style={[styles.timelineHarvestText, { color: '#2e7d32' }]}>🌳 {t.rawWeight}: {log.rawYieldKg} kg</Text>
+                      ) : null}
+                      {log.processingCharge ? (
+                        <Text style={[styles.timelineHarvestText, { color: '#7f8c8d' }]}>⚙️ {language === 'ml' ? 'പ്രൊസസ്സിംഗ് ചിലവ്' : 'Processing Cost'}: ₹{log.processingCharge}</Text>
                       ) : null}
                       {log.pricePerKg ? (
                         <Text style={[styles.timelineHarvestText, { color: '#2e7d32' }]}>🏷️ {t.pricePerKg}: ₹{log.pricePerKg}/kg</Text>
@@ -611,29 +702,51 @@ export default function CropsTab({
 
 
 
-              {isHarvesting && (
-                <View style={styles.row}>
-                  <View style={styles.col}>
-                    <Text style={styles.inputLabel}>{t.yieldKg}</Text>
-                    <TextInput 
-                      style={styles.input} 
-                      keyboardType="numeric" 
-                      placeholder="e.g. 50" 
-                      value={workYield} 
-                      onChangeText={setWorkYield} 
-                    />
+              {isHarvestingOrCuring && (
+                <>
+                  <View style={styles.row}>
+                    <View style={styles.col}>
+                      <Text style={styles.inputLabel}>
+                        {isCardamom 
+                          ? (language === 'ml' ? 'ഉണങ്ങിയ അളവ് (Kg)' : 'Dried Yield (Kg)') 
+                          : t.yieldKg
+                        }
+                      </Text>
+                      <TextInput 
+                        style={styles.input} 
+                        keyboardType="numeric" 
+                        placeholder="e.g. 50" 
+                        value={workYield} 
+                        onChangeText={setWorkYield} 
+                      />
+                    </View>
+                    <View style={styles.col}>
+                      <Text style={styles.inputLabel}>{t.income}</Text>
+                      <TextInput 
+                        style={styles.input} 
+                        keyboardType="numeric" 
+                        placeholder="e.g. 15000" 
+                        value={workIncome} 
+                        onChangeText={setWorkIncome} 
+                      />
+                    </View>
                   </View>
-                  <View style={styles.col}>
-                    <Text style={styles.inputLabel}>{t.income}</Text>
-                    <TextInput 
-                      style={styles.input} 
-                      keyboardType="numeric" 
-                      placeholder="e.g. 15000" 
-                      value={workIncome} 
-                      onChangeText={setWorkIncome} 
-                    />
-                  </View>
-                </View>
+                  {isCardamom && (
+                    <View style={styles.row}>
+                      <View style={styles.col}>
+                        <Text style={styles.inputLabel}>{t.rawWeightOptional}</Text>
+                        <TextInput 
+                          style={styles.input} 
+                          keyboardType="numeric" 
+                          placeholder={t.rawWeightPlaceholder} 
+                          value={workRawYield} 
+                          onChangeText={setWorkRawYield} 
+                        />
+                      </View>
+                      <View style={styles.col} />
+                    </View>
+                  )}
+                </>
               )}
 
               <View style={styles.row}>
@@ -861,6 +974,38 @@ export default function CropsTab({
                   />
                 </View>
               </View>
+
+              {isCardamom && (
+                <View style={styles.row}>
+                  <View style={styles.col}>
+                    <Text style={styles.inputLabel}>{t.rawWeightOptional}</Text>
+                    <TextInput 
+                      style={styles.input} 
+                      keyboardType="numeric" 
+                      placeholder={t.rawWeightPlaceholder} 
+                      value={earningsRawYield} 
+                      onChangeText={setEarningsRawYield} 
+                    />
+                  </View>
+                  <View style={styles.col} />
+                </View>
+              )}
+
+              {(isPepper || isCardamom) && (
+                <View style={styles.row}>
+                  <View style={styles.col}>
+                    <Text style={styles.inputLabel}>{t.processingCharge}</Text>
+                    <TextInput 
+                      style={styles.input} 
+                      keyboardType="numeric" 
+                      placeholder={t.processingChargePlaceholder} 
+                      value={earningsProcessingCharge} 
+                      onChangeText={setEarningsProcessingCharge} 
+                    />
+                  </View>
+                  <View style={styles.col} />
+                </View>
+              )}
 
               {/* Auto Calculated Preview */}
               <View style={[styles.autoCalcBox, { backgroundColor: '#e8f5e9', borderColor: '#c8e6c9' }]}>

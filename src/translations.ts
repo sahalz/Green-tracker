@@ -108,7 +108,16 @@ export const TRANSLATIONS = {
     sellingItem: 'Selling Item *',
     quantitySold: 'Quantity Sold (Kg) *',
     pricePerKg: 'Price per Kg (₹) *',
-    totalAmount: 'Total Amount (₹)'
+    totalAmount: 'Total Amount (₹)',
+    rawWeight: 'Raw Weight (Kg)',
+    rawWeightPlaceholder: 'e.g. 150',
+    rawWeightOptional: 'Raw Weight (Kg) (Optional)',
+    processingCharge: 'Processing Charge (₹)',
+    processingChargePlaceholder: 'e.g. 1000',
+    sprayingOverdue: 'Cardamom Spraying Overdue!',
+    daysAgo: 'days ago',
+    neverSprayed: 'never sprayed',
+    sprayingRequirementNotice: 'Monthly chemical spraying is required for Cardamom.'
   },
   ml: {
     appName: 'ഗ്രീൻട്രാക്കർ',
@@ -217,7 +226,16 @@ export const TRANSLATIONS = {
     sellingItem: 'വിൽപ്പന സാധനം *',
     quantitySold: 'വിറ്റ അളവ് (Kg) *',
     pricePerKg: 'ഒരു കിലോയുടെ വില (₹) *',
-    totalAmount: 'ആകെ തുക (₹)'
+    totalAmount: 'ആകെ തുക (₹)',
+    rawWeight: 'അസംസ്കൃത ഭാരം (Kg)',
+    rawWeightPlaceholder: 'ഉദാ: 150',
+    rawWeightOptional: 'അസംസ്കൃത ഭാരം (Kg) (നിർബന്ധമില്ല)',
+    processingCharge: 'പ്രൊസസ്സിംഗ് ചിലവ് (₹)',
+    processingChargePlaceholder: 'ഉദാ: 1000',
+    sprayingOverdue: 'മരുന്ന് തളിക്കൽ വൈകിയിരിക്കുന്നു!',
+    daysAgo: 'ദിവസങ്ങൾക്ക് മുൻപ്',
+    neverSprayed: 'ഇതുവരെ തളിച്ചിട്ടില്ല',
+    sprayingRequirementNotice: 'ഏലത്തിന് എല്ലാ മാസവും മരുന്ന് തളിക്കേണ്ടതുണ്ട്.'
   }
 };
 

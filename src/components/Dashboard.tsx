@@ -88,6 +88,45 @@ export default function Dashboard({ crops, workLogs, pesticideLogs, onSelectCrop
     }
   });
 
+  // Cardamom spraying warnings
+  const cardamomOverdueWarnings: Array<{ cropId: string; cropName: string; lastSprayDate?: string; daysSinceLastSpray: number }> = [];
+
+  activeCrops.forEach(crop => {
+    const isCard = crop.type.toLowerCase().includes('cardamom') || 
+                   crop.type.toLowerCase().includes('cardomom') || 
+                   crop.type.includes('ഏല');
+    if (isCard) {
+      const cropSprays = pesticideLogs
+        .filter(p => (p.cropIds || []).includes(crop.id))
+        .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+
+      if (cropSprays.length > 0) {
+        const lastSprayDate = new Date(cropSprays[0].date);
+        const msDiff = Date.now() - lastSprayDate.getTime();
+        const days = Math.floor(msDiff / (24 * 60 * 60 * 1000));
+        if (days > 30) {
+          cardamomOverdueWarnings.push({
+            cropId: crop.id,
+            cropName: crop.name,
+            lastSprayDate: cropSprays[0].date,
+            daysSinceLastSpray: days
+          });
+        }
+      } else {
+        const plantingDate = new Date(crop.plantingDate);
+        const msDiff = Date.now() - plantingDate.getTime();
+        const days = Math.floor(msDiff / (24 * 60 * 60 * 1000));
+        if (days > 30) {
+          cardamomOverdueWarnings.push({
+            cropId: crop.id,
+            cropName: crop.name,
+            daysSinceLastSpray: days
+          });
+        }
+      }
+    }
+  });
+
   // Filter crops
   const filteredCrops = crops.filter(crop => {
     const matchesSearch = crop.name.toLowerCase().includes(searchQuery.toLowerCase()) || 
@@ -152,6 +191,27 @@ export default function Dashboard({ crops, workLogs, pesticideLogs, onSelectCrop
                 <View style={styles.badge}>
                   <Text style={styles.badgeText}>{warn.daysLeft} {t.daysLeft}</Text>
                 </View>
+              </View>
+            ))}
+          </View>
+        )}
+
+        {/* Cardamom Spray Overdue Warnings */}
+        {cardamomOverdueWarnings.length > 0 && (
+          <View style={[styles.warningContainer, { backgroundColor: '#fff3cd', borderColor: '#ffeeba' }]}>
+            <Text style={[styles.warningHeader, { color: '#856404' }]}>⚠️ {t.sprayingOverdue}</Text>
+            {cardamomOverdueWarnings.map((warn, index) => (
+              <View key={index} style={styles.warningItem}>
+                <Text style={[styles.warningText, { color: '#856404', flex: 1, paddingRight: 10 }]}>
+                  {warn.lastSprayDate
+                    ? (language === 'ml' 
+                      ? `${warn.cropName}: അവസാനമായി മരുന്ന് തളിച്ചത് ${warn.daysSinceLastSpray} ദിവസങ്ങൾക്ക് മുൻപാണ്. ${t.sprayingRequirementNotice}`
+                      : `${warn.cropName}: Last spray was ${warn.daysSinceLastSpray} ${t.daysAgo}. ${t.sprayingRequirementNotice}`)
+                    : (language === 'ml'
+                      ? `${warn.cropName}: നട്ടിട്ട് ${warn.daysSinceLastSpray} ദിവസമായി, ഇതുവരെ മരുന്ന് തളിച്ചിട്ടില്ല. ${t.sprayingRequirementNotice}`
+                      : `${warn.cropName}: Planted ${warn.daysSinceLastSpray} ${t.daysAgo}, never sprayed. ${t.sprayingRequirementNotice}`)
+                  }
+                </Text>
               </View>
             ))}
           </View>

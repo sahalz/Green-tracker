@@ -93,6 +93,23 @@ const MOCK_WORK_LOGS: WorkLog[] = [
     noOfWorkers: 2,
     laborCostPerWorker: 600.0,
   },
+  {
+    id: 'work-105',
+    cropId: 'crop-1',
+    activityType: 'Revenue',
+    date: '2026-02-15',
+    durationMinutes: 0,
+    laborCost: 0,
+    materialCost: 0,
+    equipmentCost: 0,
+    totalCost: 0,
+    notes: 'Sold premium dried black pepper spikes. Deducted processing/threshing charge.',
+    manureName: 'Black Pepper',
+    yieldKg: 100,
+    income: 60000.0,
+    pricePerKg: 600.0,
+    processingCharge: 1500.0,
+  },
 
   // Valley View Cardamom (crop-2)
   {
@@ -149,6 +166,7 @@ const MOCK_WORK_LOGS: WorkLog[] = [
     totalCost: 7500.0,
     notes: 'First picking round of cardamom capsules. Cured in local smoke house.',
     yieldKg: 35,
+    rawYieldKg: 175,
     income: 52500.0,
     noOfWorkers: 10,
     laborCostPerWorker: 600.0,
