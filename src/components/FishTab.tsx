@@ -1,7 +1,11 @@
-import React, { useState } from 'react';
-import { StyleSheet, Text, View, ScrollView, TouchableOpacity, TextInput, Modal, Alert, Platform } from 'react-native';
+import React, { useState, useEffect } from 'react';
+import { StyleSheet, Text, View, ScrollView, TouchableOpacity, TextInput, Modal, Alert, Platform, KeyboardAvoidingView } from 'react-native';
 import { Crop, CropStage, WorkLog } from '../types';
 import { Language, TRANSLATIONS, translateStage, translateActivity } from '../translations';
+import CustomDatePicker from './CustomDatePicker';
+import CustomTimePickerModal from './CustomTimePickerModal';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { scheduleDailyFishFeedingNotification, cancelFishFeedingNotification } from '../notifications';
 
 interface FishTabProps {
   workLogs: WorkLog[];
@@ -21,6 +25,77 @@ export default function FishTab({
   language,
 }: FishTabProps) {
   const t = TRANSLATIONS[language];
+
+  // Daily reminder states
+  const [reminderEnabled, setReminderEnabled] = useState(false);
+  const [reminderTime, setReminderTime] = useState('08:00'); // default 8:00 AM
+  const [showTimePicker, setShowTimePicker] = useState(false);
+
+  useEffect(() => {
+    if (selectedCrop) {
+      const loadReminderSettings = async () => {
+        try {
+          const enabledVal = await AsyncStorage.getItem(`fish_feed_reminder_enabled_${selectedCrop.id}`);
+          const timeVal = await AsyncStorage.getItem(`fish_feed_reminder_time_${selectedCrop.id}`);
+          if (enabledVal !== null) {
+            setReminderEnabled(enabledVal === 'true');
+          } else {
+            setReminderEnabled(false);
+          }
+          if (timeVal !== null) {
+            setReminderTime(timeVal);
+          } else {
+            setReminderTime('08:00');
+          }
+        } catch (e) {
+          console.warn('Error loading reminder settings:', e);
+        }
+      };
+      loadReminderSettings();
+    }
+  }, [selectedCrop]);
+
+  const handleToggleReminder = async (value: boolean) => {
+    if (!selectedCrop) return;
+    try {
+      setReminderEnabled(value);
+      await AsyncStorage.setItem(`fish_feed_reminder_enabled_${selectedCrop.id}`, String(value));
+      if (value) {
+        // Schedule it
+        const [hour, minute] = reminderTime.split(':').map(Number);
+        await scheduleDailyFishFeedingNotification(hour, minute);
+      } else {
+        // Cancel it
+        await cancelFishFeedingNotification();
+      }
+    } catch (e) {
+      console.warn('Error saving reminder state:', e);
+    }
+  };
+
+  const handleSelectTime = async (time24h: string) => {
+    if (!selectedCrop) return;
+    try {
+      setReminderTime(time24h);
+      await AsyncStorage.setItem(`fish_feed_reminder_time_${selectedCrop.id}`, time24h);
+      if (reminderEnabled) {
+        // Reschedule with new time
+        const [hour, minute] = time24h.split(':').map(Number);
+        await scheduleDailyFishFeedingNotification(hour, minute);
+      }
+    } catch (e) {
+      console.warn('Error saving reminder time:', e);
+    }
+  };
+
+  const formatTime12h = (time24h: string) => {
+    if (!/^\d{2}:\d{2}$/.test(time24h)) return time24h;
+    const [hour, minute] = time24h.split(':').map(Number);
+    const period = hour >= 12 ? 'PM' : 'AM';
+    const hour12 = hour % 12 === 0 ? 12 : hour % 12;
+    const pad = (n: number) => (n < 10 ? `0${n}` : `${n}`);
+    return `${hour12}:${pad(minute)} ${period}`;
+  };
 
   // Modal visibility states
   const [showWorkLogModal, setShowWorkLogModal] = useState(false);
@@ -494,6 +569,43 @@ export default function FishTab({
           )}
         </View>
 
+        {/* Daily Feeding Reminder Card */}
+        <View style={styles.ledgerCard}>
+          <Text style={styles.ledgerTitle}>🔔 {language === 'ml' ? 'ദിനചര്യ ഓർമ്മപ്പെടുത്തൽ' : 'Daily Feeding Reminder'}</Text>
+          <View style={styles.reminderRow}>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.reminderStatusLabel}>
+                {language === 'ml' 
+                  ? (reminderEnabled ? 'ഓർമ്മപ്പെടുത്തൽ സജീവമാണ്' : 'ഓർമ്മപ്പെടുത്തൽ നിർജ്ജീവമാണ്') 
+                  : (reminderEnabled ? 'Reminder is Active' : 'Reminder is Inactive')}
+              </Text>
+              <Text style={styles.reminderTimeText}>
+                ⏰ {language === 'ml' ? 'തീറ്റ സമയം: ' : 'Feeding Time: '}
+                <Text style={{ fontWeight: 'bold', color: '#006064' }}>{formatTime12h(reminderTime)}</Text>
+              </Text>
+            </View>
+            <View style={styles.reminderActions}>
+              <TouchableOpacity
+                style={[styles.timePickerToggleBtn, { marginRight: 10 }]}
+                onPress={() => setShowTimePicker(true)}
+              >
+                <Text style={styles.timePickerToggleBtnText}>⏰ {language === 'ml' ? 'സമയം മാറ്റുക' : 'Set Time'}</Text>
+              </TouchableOpacity>
+              
+              <TouchableOpacity
+                style={[styles.reminderToggleBtn, reminderEnabled ? styles.reminderToggleBtnActive : styles.reminderToggleBtnInactive]}
+                onPress={() => handleToggleReminder(!reminderEnabled)}
+              >
+                <Text style={styles.reminderToggleBtnText}>
+                  {reminderEnabled 
+                    ? (language === 'ml' ? 'ഓഫ് ചെയ്യുക' : 'Disable') 
+                    : (language === 'ml' ? 'ഓൺ ചെയ്യുക' : 'Enable')}
+                </Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+
         {/* Direct Action Grid (Premium Cyan-Aqua Style) */}
         <View style={styles.goatActionsRow}>
           {/* Row 1 */}
@@ -646,8 +758,16 @@ export default function FishTab({
       </ScrollView>
 
       {/* Adjust Inventory Modal */}
-      <Modal visible={showAdjustModal} animationType="slide" transparent={true}>
-        <View style={styles.modalOverlay}>
+      <Modal 
+        visible={showAdjustModal} 
+        animationType="slide" 
+        transparent={true}
+        onRequestClose={() => setShowAdjustModal(false)}
+      >
+        <KeyboardAvoidingView
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+          style={styles.modalOverlay}
+        >
           <View style={styles.modalContent}>
             <Text style={styles.modalTitle}>
               ⚙️ {language === 'ml' ? 'എണ്ണം ക്രമീകരിക്കുക' : 'Adjust Fish Stock'}
@@ -675,12 +795,19 @@ export default function FishTab({
               </TouchableOpacity>
             </View>
           </View>
-        </View>
+        </KeyboardAvoidingView>
       </Modal>
 
-      {/* Buy Fingerlings Modal */}
-      <Modal visible={showBuyFishModal} animationType="slide" transparent={true}>
-        <View style={styles.modalOverlay}>
+      <Modal 
+        visible={showBuyFishModal} 
+        animationType="slide" 
+        transparent={true}
+        onRequestClose={() => setShowBuyFishModal(false)}
+      >
+        <KeyboardAvoidingView
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+          style={styles.modalOverlay}
+        >
           <View style={styles.modalContent}>
             <Text style={styles.modalTitle}>
               🛒 {language === 'ml' ? 'മീൻ കുഞ്ഞുങ്ങളെ വാങ്ങുക' : 'Buy Fingerlings'}
@@ -719,10 +846,10 @@ export default function FishTab({
               </View>
 
               <Text style={styles.inputLabel}>{language === 'ml' ? 'തീയതി' : 'Date'}</Text>
-              <TextInput 
-                style={styles.input} 
+              <CustomDatePicker 
                 value={buyDate} 
-                onChangeText={setBuyDate} 
+                onChange={setBuyDate} 
+                language={language} 
               />
 
               <Text style={styles.inputLabel}>{t.notes}</Text>
@@ -744,12 +871,19 @@ export default function FishTab({
               </TouchableOpacity>
             </View>
           </View>
-        </View>
+        </KeyboardAvoidingView>
       </Modal>
 
-      {/* Feed Expenses Modal */}
-      <Modal visible={showFeedModal} animationType="slide" transparent={true}>
-        <View style={styles.modalOverlay}>
+      <Modal 
+        visible={showFeedModal} 
+        animationType="slide" 
+        transparent={true}
+        onRequestClose={() => setShowFeedModal(false)}
+      >
+        <KeyboardAvoidingView
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+          style={styles.modalOverlay}
+        >
           <View style={styles.modalContent}>
             <Text style={styles.modalTitle}>
               🌾 {language === 'ml' ? 'തീറ്റ ചിലവ് രേഖപ്പെടുത്തുക' : 'Log Feed Expense'}
@@ -788,10 +922,10 @@ export default function FishTab({
               </View>
 
               <Text style={styles.inputLabel}>{language === 'ml' ? 'തീയതി' : 'Date'}</Text>
-              <TextInput 
-                style={styles.input} 
+              <CustomDatePicker 
                 value={feedDate} 
-                onChangeText={setFeedDate} 
+                onChange={setFeedDate} 
+                language={language} 
               />
 
               <Text style={styles.inputLabel}>{t.notes}</Text>
@@ -813,12 +947,19 @@ export default function FishTab({
               </TouchableOpacity>
             </View>
           </View>
-        </View>
+        </KeyboardAvoidingView>
       </Modal>
 
-      {/* Record pH Modal */}
-      <Modal visible={showPHModal} animationType="slide" transparent={true}>
-        <View style={styles.modalOverlay}>
+      <Modal 
+        visible={showPHModal} 
+        animationType="slide" 
+        transparent={true}
+        onRequestClose={() => setShowPHModal(false)}
+      >
+        <KeyboardAvoidingView
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+          style={styles.modalOverlay}
+        >
           <View style={styles.modalContent}>
             <Text style={styles.modalTitle}>
               🧪 {language === 'ml' ? 'pH രേഖപ്പെടുത്തുക' : 'Record Water pH'}
@@ -835,10 +976,10 @@ export default function FishTab({
               />
 
               <Text style={styles.inputLabel}>{language === 'ml' ? 'തീയതി' : 'Date'}</Text>
-              <TextInput 
-                style={styles.input} 
+              <CustomDatePicker 
                 value={phDate} 
-                onChangeText={setPHDate} 
+                onChange={setPHDate} 
+                language={language} 
               />
 
               <Text style={styles.inputLabel}>{t.notes}</Text>
@@ -860,12 +1001,19 @@ export default function FishTab({
               </TouchableOpacity>
             </View>
           </View>
-        </View>
+        </KeyboardAvoidingView>
       </Modal>
 
-      {/* Sell Fish Modal */}
-      <Modal visible={showSellFishModal} animationType="slide" transparent={true}>
-        <View style={styles.modalOverlay}>
+      <Modal 
+        visible={showSellFishModal} 
+        animationType="slide" 
+        transparent={true}
+        onRequestClose={() => setShowSellFishModal(false)}
+      >
+        <KeyboardAvoidingView
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+          style={styles.modalOverlay}
+        >
           <View style={styles.modalContent}>
             <Text style={styles.modalTitle}>
               💰 {language === 'ml' ? 'മീൻ വിൽക്കുക' : 'Sell Fish'}
@@ -905,10 +1053,10 @@ export default function FishTab({
               </View>
 
               <Text style={styles.inputLabel}>{language === 'ml' ? 'തീയതി' : 'Date'}</Text>
-              <TextInput 
-                style={styles.input} 
+              <CustomDatePicker 
                 value={sellDate} 
-                onChangeText={setSellDate} 
+                onChange={setSellDate} 
+                language={language} 
               />
 
               <Text style={styles.inputLabel}>{t.notes}</Text>
@@ -930,12 +1078,19 @@ export default function FishTab({
               </TouchableOpacity>
             </View>
           </View>
-        </View>
+        </KeyboardAvoidingView>
       </Modal>
 
-      {/* Mortality / Loss Modal */}
-      <Modal visible={showLossModal} animationType="slide" transparent={true}>
-        <View style={styles.modalOverlay}>
+      <Modal 
+        visible={showLossModal} 
+        animationType="slide" 
+        transparent={true}
+        onRequestClose={() => setShowLossModal(false)}
+      >
+        <KeyboardAvoidingView
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+          style={styles.modalOverlay}
+        >
           <View style={styles.modalContent}>
             <Text style={styles.modalTitle}>
               ⚠️ {language === 'ml' ? 'മീൻ നഷ്ടം / മരണം രേഖപ്പെടുത്തുക' : 'Log Loss / Mortality'}
@@ -952,10 +1107,10 @@ export default function FishTab({
               />
 
               <Text style={styles.inputLabel}>{language === 'ml' ? 'തീയതി' : 'Date'}</Text>
-              <TextInput 
-                style={styles.input} 
+              <CustomDatePicker 
                 value={lossDate} 
-                onChangeText={setLossDate} 
+                onChange={setLossDate} 
+                language={language} 
               />
 
               <Text style={styles.inputLabel}>{t.notes}</Text>
@@ -977,12 +1132,19 @@ export default function FishTab({
               </TouchableOpacity>
             </View>
           </View>
-        </View>
+        </KeyboardAvoidingView>
       </Modal>
 
-      {/* Miscellaneous Work Log Modal */}
-      <Modal visible={showWorkLogModal} animationType="slide" transparent={true}>
-        <View style={styles.modalOverlay}>
+      <Modal 
+        visible={showWorkLogModal} 
+        animationType="slide" 
+        transparent={true}
+        onRequestClose={() => setShowWorkLogModal(false)}
+      >
+        <KeyboardAvoidingView
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+          style={styles.modalOverlay}
+        >
           <View style={styles.modalContent}>
             <Text style={styles.modalTitle}>
               ➕ {language === 'ml' ? 'മറ്റ് പണികൾ രേഖപ്പെടുത്തുക' : 'Log Work / Expense'}
@@ -1030,10 +1192,10 @@ export default function FishTab({
               />
 
               <Text style={styles.inputLabel}>{language === 'ml' ? 'തീയതി' : 'Date'}</Text>
-              <TextInput 
-                style={styles.input} 
+              <CustomDatePicker 
                 value={workDate} 
-                onChangeText={setWorkDate} 
+                onChange={setWorkDate} 
+                language={language} 
               />
 
               <Text style={styles.inputLabel}>{t.notes}</Text>
@@ -1055,9 +1217,16 @@ export default function FishTab({
               </TouchableOpacity>
             </View>
           </View>
-        </View>
+        </KeyboardAvoidingView>
       </Modal>
 
+      <CustomTimePickerModal
+        visible={showTimePicker}
+        onClose={() => setShowTimePicker(false)}
+        onSelectTime={handleSelectTime}
+        language={language}
+        initialTime={reminderTime}
+      />
     </View>
   );
 }
@@ -1440,5 +1609,53 @@ const styles = StyleSheet.create({
     color: '#ffffff',
     fontWeight: '700',
     fontSize: 13,
+  },
+  reminderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginTop: 10,
+  },
+  reminderStatusLabel: {
+    fontSize: 14,
+    color: '#333',
+    marginBottom: 4,
+  },
+  reminderTimeText: {
+    fontSize: 13,
+    color: '#666',
+  },
+  reminderActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  timePickerToggleBtn: {
+    backgroundColor: '#e0f7fa',
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderRadius: 8,
+  },
+  timePickerToggleBtnText: {
+    color: '#006064',
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  reminderToggleBtn: {
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderRadius: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  reminderToggleBtnActive: {
+    backgroundColor: '#ffcdd2',
+  },
+  reminderToggleBtnInactive: {
+    backgroundColor: '#c8e6c9',
+  },
+  reminderToggleBtnText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#333',
   },
 });

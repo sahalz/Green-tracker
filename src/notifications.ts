@@ -14,3 +14,14 @@ export async function cancelSprayingNotification(cropId: string) {
 export async function syncCardamomNotifications(crops: Crop[], pesticideLogs: PesticideLog[]) {
   // No-op on web
 }
+
+// Schedule daily fish feeding notification (no-op on web)
+export async function scheduleDailyFishFeedingNotification(hour: number, minute: number): Promise<boolean> {
+  return false;
+}
+
+// Cancel daily fish feeding notification (no-op on web)
+export async function cancelFishFeedingNotification(): Promise<void> {
+  // No-op on web
+}
+

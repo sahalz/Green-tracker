@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { StyleSheet, Text, View, SafeAreaView, TouchableOpacity, ActivityIndicator, Platform, StatusBar as RNStatusBar, Alert } from 'react-native';
+import { StyleSheet, Text, View, SafeAreaView, TouchableOpacity, ActivityIndicator, Platform, StatusBar as RNStatusBar, Alert, BackHandler, TextInput, Modal, KeyboardAvoidingView } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Print from 'expo-print';
@@ -20,12 +20,16 @@ import {
   addWorkLog,
   deleteWorkLog,
   addPesticideLog,
-  deletePesticideLog
+  deletePesticideLog,
+  getSyncCode,
+  saveSyncCode,
+  syncPendingQueue,
+  fetchAndSyncAllData
 } from './src/storage';
 
 import Dashboard from './src/components/Dashboard';
 import CropsTab from './src/components/CropsTab';
-import SheepTab from './src/components/SheepTab';
+import GoatTab from './src/components/GoatTab';
 import FishTab from './src/components/FishTab';
 import { syncCardamomNotifications } from './src/notifications';
 
@@ -44,10 +48,47 @@ export default function App() {
   // Selection state for drilling down into a crop's details
   const [selectedCrop, setSelectedCrop] = useState<Crop | null>(null);
 
+  // Bottom tab state
+  const [currentTab, setCurrentTab] = useState<'Crops' | 'Goat' | 'Fish'>('Crops');
+
+  // Cloud Sync States
+  const [syncCode, setSyncCodeState] = useState('demofarm');
+  const [showSyncModal, setShowSyncModal] = useState(false);
+  const [tempSyncCode, setTempSyncCode] = useState('');
+  const [isSyncing, setIsSyncing] = useState(false);
+
+  // Handle Android hardware back button
+  useEffect(() => {
+    const handleBackPress = () => {
+      // 1. If a crop is selected, go back to dashboard list
+      if (selectedCrop) {
+        setSelectedCrop(null);
+        return true; // prevent default behavior (exiting app)
+      }
+      
+      // 2. If we are on Goat or Fish tab, switch back to Crops tab
+      if (currentTab !== 'Crops') {
+        setCurrentTab('Crops');
+        return true; // prevent default behavior
+      }
+      
+      return false; // let default behavior happen (exits app)
+    };
+
+    const subscription = BackHandler.addEventListener('hardwareBackPress', handleBackPress);
+
+    return () => {
+      subscription.remove();
+    };
+  }, [selectedCrop, currentTab]);
+
   // Load data & language on start
   useEffect(() => {
     const loadAppData = async () => {
       try {
+        const savedCode = await getSyncCode();
+        setSyncCodeState(savedCode);
+
         await initializeDatabase(); // Will fill mock data if first load
         
         // Load language preference
@@ -65,6 +106,73 @@ export default function App() {
     };
     loadAppData();
   }, []);
+
+  // Periodic background synchronization check
+  useEffect(() => {
+    if (isLoading) return;
+
+    // Run initial background sync
+    syncPendingQueue()
+      .then(() => fetchAndSyncAllData())
+      .then(() => refreshAllData())
+      .catch(err => console.warn('Initial sync failed:', err));
+
+    const syncInterval = setInterval(async () => {
+      try {
+        await syncPendingQueue();
+      } catch (e) {
+        console.warn('Background sync failed:', e);
+      }
+    }, 30000); // Every 30 seconds
+
+    return () => clearInterval(syncInterval);
+  }, [isLoading, syncCode]);
+
+  const handleSaveSyncCode = async () => {
+    const trimmed = tempSyncCode.trim().toLowerCase();
+    if (!trimmed) {
+      Alert.alert(language === 'ml' ? 'പിശക്' : 'Error', language === 'ml' ? 'ദയവായി സാധുവായ ഒരു കോഡ് നൽകുക' : 'Please enter a valid code');
+      return;
+    }
+    
+    setIsSyncing(true);
+    try {
+      await saveSyncCode(trimmed);
+      setSyncCodeState(trimmed);
+      
+      // Initialize database with new sync code records
+      await initializeDatabase();
+      await refreshAllData();
+      
+      setShowSyncModal(false);
+      Alert.alert(
+        language === 'ml' ? 'വിജയം' : 'Success', 
+        language === 'ml' ? `സിങ്ക് കോഡ് ${trimmed} ലേക്ക് മാറ്റി` : `Sync Code updated to "${trimmed}" successfully!`
+      );
+    } catch (e) {
+      console.error(e);
+      Alert.alert(language === 'ml' ? 'പിശക്' : 'Error', language === 'ml' ? 'സിങ്ക് ചെയ്യുന്നതിൽ പരാജയപ്പെട്ടു' : 'Failed to sync with the cloud database');
+    } finally {
+      setIsSyncing(false);
+    }
+  };
+
+  const handleManualSync = async () => {
+    setIsSyncing(true);
+    try {
+      await syncPendingQueue();
+      await fetchAndSyncAllData();
+      await refreshAllData();
+      Alert.alert(
+        language === 'ml' ? 'സിൻക്രൊണൈസേഷൻ' : 'Sync Complete',
+        language === 'ml' ? 'ക്ലൗഡുമായി സിങ്ക് ചെയ്യുന്നത് വിജയകരമായി പൂർത്തിയായി' : 'Successfully synchronized offline updates and downloaded cloud changes.'
+      );
+    } catch (e) {
+      Alert.alert(language === 'ml' ? 'പിശക്' : 'Error', language === 'ml' ? 'സിങ്ക് ചെയ്യുന്നതിൽ പരാജയപ്പെട്ടു' : 'Failed to sync. Operating offline.');
+    } finally {
+      setIsSyncing(false);
+    }
+  };
 
   const refreshAllData = async () => {
     let [c, w, p] = await Promise.all([
@@ -170,10 +278,10 @@ export default function App() {
       const crop = crops.find(c => c.id === logToDelete.cropId);
       if (crop) {
         let updatedCrop = { ...crop };
-        let isSheep = crop.type.toLowerCase().includes('sheep') || crop.type.includes('ചെമ്മരിയാട്') || crop.type.toLowerCase().includes('goat') || crop.type.includes('ആട്');
+        let isGoat = crop.type.toLowerCase().includes('goat') || crop.type.includes('ആട്');
         let isFish = crop.type.toLowerCase().includes('fish') || crop.type.includes('മത്സ്യം');
 
-        if (isSheep) {
+        if (isGoat) {
           const malesVal = logToDelete.malesCount || 0;
           const femalesVal = logToDelete.femalesCount || 0;
           const kidsVal = logToDelete.kidsCount || logToDelete.yieldKg || 0;
@@ -217,12 +325,12 @@ export default function App() {
 
   const handleExportPDF = async () => {
     try {
-      const isSheepCrop = (c: Crop) => c.type.toLowerCase().includes('sheep') || c.type.includes('ചെമ്മരിയാട്') || c.type.toLowerCase().includes('goat') || c.type.includes('ആട്');
+      const isGoatCrop = (c: Crop) => c.type.toLowerCase().includes('goat') || c.type.includes('ആട്');
       const isFishCrop = (c: Crop) => c.type.toLowerCase().includes('fish') || c.type.includes('മത്സ്യം');
-      const isCropCrop = (c: Crop) => !isSheepCrop(c) && !isFishCrop(c);
+      const isCropCrop = (c: Crop) => !isGoatCrop(c) && !isFishCrop(c);
 
       const cropList = crops.filter(isCropCrop);
-      const sheepList = crops.filter(isSheepCrop);
+      const goatList = crops.filter(isGoatCrop);
       const fishList = crops.filter(isFishCrop);
 
       // Filter work logs by matching crop type
@@ -230,7 +338,7 @@ export default function App() {
         const c = crops.find(crop => crop.id === l.cropId);
         if (!c) return false;
         if (currentTab === 'Crops') return isCropCrop(c);
-        if (currentTab === 'Sheep') return isSheepCrop(c);
+        if (currentTab === 'Goat') return isGoatCrop(c);
         if (currentTab === 'Fish') return isFishCrop(c);
         return false;
       });
@@ -275,25 +383,25 @@ export default function App() {
             </tbody>
           </table>
         `;
-      } else if (currentTab === 'Sheep') {
-        reportTitle = language === 'ml' ? 'ചെമ്മരിയാട് വളർത്തൽ റിപ്പോർട്ട്' : 'Sheep Farm Report';
-        reportSubtitle = language === 'ml' ? 'ആടുകളുടെ എണ്ണവും വിവരങ്ങളും' : 'Sheep Herd Stock & Expenses';
+      } else if (currentTab === 'Goat') {
+        reportTitle = language === 'ml' ? 'ആട് വളർത്തൽ റിപ്പോർട്ട്' : 'Goat Farm Report';
+        reportSubtitle = language === 'ml' ? 'ആടുകളുടെ എണ്ണവും വിവരങ്ങളും' : 'Goat Herd Stock & Expenses';
         inventorySection = `
-          <!-- Sheep Section -->
-          <div class="section-title">${language === 'ml' ? 'ചെമ്മരിയാട് വളർത്തൽ' : 'Sheep Inventory'}</div>
+          <!-- Goat Section -->
+          <div class="section-title">${language === 'ml' ? 'ആട് വളർത്തൽ' : 'Goat Inventory'}</div>
           <table>
             <thead>
               <tr>
                 <th>${language === 'ml' ? 'ഫാം പേര്' : 'Farm Name'}</th>
                 <th>${language === 'ml' ? 'ആൺ ആടുകൾ' : 'Males'}</th>
                 <th>${language === 'ml' ? 'പെൺ ആടുകൾ' : 'Females'}</th>
-                <th>${language === 'ml' ? 'കുട്ടികൾ' : 'Lambs'}</th>
+                <th>${language === 'ml' ? 'കുട്ടികൾ' : 'Kids'}</th>
                 <th>${language === 'ml' ? 'ആകെ എണ്ണം' : 'Total Stock'}</th>
                 <th>${language === 'ml' ? 'സ്ഥലം' : 'Location'}</th>
               </tr>
             </thead>
             <tbody>
-              ${sheepList.map(s => {
+              ${goatList.map(s => {
                 const total = (s.malesCount || 0) + (s.femalesCount || 0) + (s.kidsCount || 0);
                 return `
                   <tr>
@@ -306,7 +414,7 @@ export default function App() {
                   </tr>
                 `;
               }).join('')}
-              ${sheepList.length === 0 ? `<tr><td colspan="6" style="text-align:center; color:#999;">${language === 'ml' ? 'വിവരങ്ങൾ ലഭ്യമല്ല' : 'No sheep farms registered'}</td></tr>` : ''}
+              ${goatList.length === 0 ? `<tr><td colspan="6" style="text-align:center; color:#999;">${language === 'ml' ? 'വിവരങ്ങൾ ലഭ്യമല്ല' : 'No goat farms registered'}</td></tr>` : ''}
             </tbody>
           </table>
         `;
@@ -474,21 +582,76 @@ export default function App() {
       `;
 
       if (Platform.OS === 'web') {
-        const printWindow = window.open('', '_blank');
-        if (printWindow) {
-          printWindow.document.write(htmlContent);
-          printWindow.document.close();
-          printWindow.focus();
-          printWindow.print();
+        const choice = window.confirm(
+          language === 'ml'
+            ? "റിപ്പോർട്ട് ഡൗൺലോഡ് ചെയ്യാൻ 'OK' ക്ലിക്ക് ചെയ്യുക. പ്രിന്റ് ചെയ്യാനോ പി.ഡി.എഫ് ആയി സേവ് ചെയ്യാനോ 'Cancel' ക്ലിക്ക് ചെയ്യുക."
+            : "Click 'OK' to download the report directly as an HTML file. Click 'Cancel' to open the Print / Save PDF preview window."
+        );
+        
+        if (choice) {
+          // Download HTML Report
+          const blob = new Blob([htmlContent], { type: 'text/html' });
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement('a');
+          a.href = url;
+          a.download = `${reportTitle.replace(/\s+/g, '_')}_Report.html`;
+          document.body.appendChild(a);
+          a.click();
+          document.body.removeChild(a);
+          URL.revokeObjectURL(url);
         } else {
-          Alert.alert(
-            language === 'ml' ? 'പിശക്' : 'Error',
-            language === 'ml' ? 'പി.ഡി.എഫ് റിപ്പോർട്ട് കാണുന്നതിനായി ദയവായി പോപ്പ്-അപ്പ് വിൻഡോകൾ അനുവദിക്കുക.' : 'Please allow popups to view and export the PDF report.'
-          );
+          // Open Print Dialog
+          const printWindow = window.open('', '_blank');
+          if (printWindow) {
+            printWindow.document.write(htmlContent);
+            printWindow.document.close();
+            printWindow.focus();
+            printWindow.print();
+          } else {
+            alert(
+              language === 'ml'
+                ? 'പി.ഡി.എഫ് റിപ്പോർട്ട് കാണുന്നതിനായി ദയവായി പോപ്പ്-അപ്പ് വിൻഡോകൾ അനുവദിക്കുക.'
+                : 'Please allow popups to view and export the PDF report.'
+            );
+          }
         }
       } else {
-        const { uri } = await Print.printToFileAsync({ html: htmlContent });
-        await Sharing.shareAsync(uri, { UTI: '.pdf', mimeType: 'application/pdf' });
+        Alert.alert(
+          language === 'ml' ? 'റിപ്പോർട്ട് എക്സ്പോർട്ട്' : 'Export Report',
+          language === 'ml' ? 'എന്ത് ചെയ്യണം എന്ന് തിരഞ്ഞെടുക്കുക:' : 'Select an option:',
+          [
+            {
+              text: language === 'ml' ? 'പ്രിന്റ് / സേവ് പി.ഡി.എഫ്' : 'Print / Save PDF',
+              onPress: async () => {
+                try {
+                  const { uri } = await Print.printToFileAsync({ html: htmlContent });
+                  await Sharing.shareAsync(uri, { UTI: '.pdf', mimeType: 'application/pdf' });
+                } catch (err) {
+                  console.error('Failed to print/share PDF:', err);
+                }
+              }
+            },
+            {
+              text: language === 'ml' ? 'ഡൗൺലോഡ് ചെയ്യുക (PDF)' : 'Download (PDF)',
+              onPress: async () => {
+                try {
+                  const { uri } = await Print.printToFileAsync({ html: htmlContent });
+                  await Sharing.shareAsync(uri, { 
+                    UTI: '.pdf', 
+                    mimeType: 'application/pdf',
+                    dialogTitle: language === 'ml' ? 'റിപ്പോർട്ട് സേവ് ചെയ്യുക' : 'Save PDF Report'
+                  });
+                } catch (err) {
+                  console.error('Failed to download/save PDF:', err);
+                }
+              }
+            },
+            {
+              text: language === 'ml' ? 'റദ്ദാക്കുക' : 'Cancel',
+              style: 'cancel'
+            }
+          ]
+        );
       }
     } catch (error) {
       console.error('Failed to export PDF report:', error);
@@ -499,32 +662,29 @@ export default function App() {
     }
   };
 
-  // Current bottom tab state
-  const [currentTab, setCurrentTab] = useState<'Crops' | 'Sheep' | 'Fish'>('Crops');
-
   const t = TRANSLATIONS[language];
 
-  // Helper to find the singleton Sheep crop
-  const sheepCrop = crops.find(c => c.type.toLowerCase().includes('sheep') || c.type.includes('ചെമ്മരിയാട്') || c.type.toLowerCase().includes('goat') || c.type.includes('ആട്'));
+  // Helper to find the singleton Goat crop
+  const goatCrop = crops.find(c => c.type.toLowerCase().includes('goat') || c.type.includes('ആട്'));
 
   // Helper to find the singleton Fish crop
   const fishCrop = crops.find(c => c.type.toLowerCase().includes('fish') || c.type.includes('മത്സ്യം'));
 
-  // Automatically create a singleton sheep crop if it doesn't exist
+  // Automatically create a singleton goat crop if it doesn't exist
   useEffect(() => {
-    if (!isLoading && currentTab === 'Sheep') {
-      const existingSheep = crops.find(c => c.type.toLowerCase().includes('sheep') || c.type.includes('ചെമ്മരിയാട്') || c.type.toLowerCase().includes('goat') || c.type.includes('ആട്'));
-      if (!existingSheep) {
-        const createDefaultSheep = async () => {
+    if (!isLoading && currentTab === 'Goat') {
+      const existingGoat = crops.find(c => c.type.toLowerCase().includes('goat') || c.type.includes('ആട്'));
+      if (!existingGoat) {
+        const createDefaultGoat = async () => {
           await handleAddCrop({
-            name: language === 'ml' ? 'എൻ്റെ ചെമ്മരിയാട് വളർത്തൽ' : 'My Sheep Farm',
-            type: language === 'ml' ? 'ചെമ്മരിയാട്' : 'Sheep',
+            name: language === 'ml' ? 'എൻ്റെ ആട് വളർത്തൽ' : 'My Goat Farm',
+            type: language === 'ml' ? 'ആട്' : 'Goat',
             variety: language === 'ml' ? 'നാടൻ' : 'Local',
             field: language === 'ml' ? 'പ്രധാന കൂട്' : 'Main Shed',
             plantingDate: new Date().toISOString().split('T')[0],
             expectedHarvestDate: '',
             stage: 'Seedling', // Lamb stage
-            notes: 'Default Sheep Farm Singleton',
+            notes: 'Default Goat Farm Singleton',
             malesCount: 0,
             femalesCount: 0,
             kidsCount: 0,
@@ -536,10 +696,10 @@ export default function App() {
             stageCountArchived: 0
           });
         };
-        createDefaultSheep();
+        createDefaultGoat();
       } else {
-        if (!selectedCrop || selectedCrop.id !== existingSheep.id) {
-          setSelectedCrop(existingSheep);
+        if (!selectedCrop || selectedCrop.id !== existingGoat.id) {
+          setSelectedCrop(existingGoat);
         }
       }
     }
@@ -574,14 +734,14 @@ export default function App() {
 
   // Render content in single page flow (Dashboard/Crops list -> Crop Details)
   const renderContent = () => {
-    // If we are on the Sheep tab, render the singleton sheep farm details directly
-    if (currentTab === 'Sheep') {
-      if (sheepCrop) {
+    // If we are on the Goat tab, render the singleton goat farm details directly
+    if (currentTab === 'Goat') {
+      if (goatCrop) {
         return (
-          <SheepTab
+          <GoatTab
             workLogs={workLogs}
             onUpdateCrop={handleUpdateCrop}
-            selectedCrop={sheepCrop}
+            selectedCrop={goatCrop}
             onAddWorkLog={handleAddWorkLog}
             onDeleteWorkLog={handleDeleteWorkLog}
             language={language}
@@ -591,7 +751,7 @@ export default function App() {
         return (
           <View style={styles.loadingContainer}>
             <ActivityIndicator size="large" color="#1b3a1e" />
-            <Text style={styles.loadingText}>Initializing sheep farm...</Text>
+            <Text style={styles.loadingText}>Initializing goat farm...</Text>
           </View>
         );
       }
@@ -641,7 +801,7 @@ export default function App() {
       );
     }
 
-    const cropCrops = crops.filter(c => !(c.type.toLowerCase().includes('sheep') || c.type.includes('ചെമ്മരിയാട്') || c.type.toLowerCase().includes('goat') || c.type.includes('ആട്') || c.type.toLowerCase().includes('fish') || c.type.includes('മത്സ്യം')));
+    const cropCrops = crops.filter(c => !(c.type.toLowerCase().includes('goat') || c.type.includes('ആട്') || c.type.toLowerCase().includes('fish') || c.type.includes('മത്സ്യം')));
     const cropCropIds = new Set(cropCrops.map(c => c.id));
     const cropWorkLogs = workLogs.filter(l => cropCropIds.has(l.cropId));
 
@@ -675,6 +835,16 @@ export default function App() {
         <Text style={styles.langHeaderTitle}>{t.appName}</Text>
         <View style={styles.headerRightActions}>
           <TouchableOpacity
+            style={[styles.pdfExportBtn, { backgroundColor: '#eef2ff', borderColor: '#c7d2fe', marginRight: 5 }]}
+            onPress={() => {
+              setTempSyncCode(syncCode);
+              setShowSyncModal(true);
+            }}
+          >
+            <Text style={[styles.pdfExportBtnText, { color: '#4f46e5' }]}>🔄 Sync</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
             style={styles.pdfExportBtn}
             onPress={handleExportPDF}
           >
@@ -697,6 +867,70 @@ export default function App() {
           </View>
         </View>
       </View>
+
+      {/* Cloud Sync Settings Modal */}
+      <Modal
+        visible={showSyncModal}
+        animationType="fade"
+        transparent={true}
+        onRequestClose={() => setShowSyncModal(false)}
+      >
+        <KeyboardAvoidingView
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+          style={styles.syncModalOverlay}
+        >
+          <View style={styles.syncModalContent}>
+            <Text style={styles.syncModalTitle}>
+              {language === 'ml' ? 'ക്ലൗഡ് സിൻക്രൊണൈസേഷൻ' : 'Cloud Sync Settings'}
+            </Text>
+            <Text style={styles.syncModalDescription}>
+              {language === 'ml' ? 'മറ്റ് ഫോണുകളുമായി വിവരങ്ങൾ പങ്കിടാൻ ഒരേ സിങ്ക് കോഡ് ഉപയോഗിക്കുക.' : 'Use the same Sync Code on other devices to share the exact same farm data.'}
+            </Text>
+            
+            <Text style={styles.syncInputLabel}>
+              {language === 'ml' ? 'സിങ്ക് കോഡ് *' : 'Sync Code *'}
+            </Text>
+            <TextInput
+              style={styles.syncInput}
+              placeholder="e.g. demofarm"
+              value={tempSyncCode}
+              onChangeText={setTempSyncCode}
+              autoCapitalize="none"
+              autoCorrect={false}
+            />
+            
+            {isSyncing ? (
+              <ActivityIndicator size="small" color="#1b3a1e" style={{ marginVertical: 15 }} />
+            ) : (
+              <View style={styles.syncActionContainer}>
+                <TouchableOpacity
+                  style={[styles.syncModalBtn, styles.syncManualBtn]}
+                  onPress={handleManualSync}
+                >
+                  <Text style={styles.syncManualBtnText}>🔄 {language === 'ml' ? 'ഇപ്പോൾ സിങ്ക് ചെയ്യുക' : 'Sync Now'}</Text>
+                </TouchableOpacity>
+              </View>
+            )}
+
+            <View style={styles.syncModalActions}>
+              <TouchableOpacity
+                style={[styles.syncModalBtn, styles.syncCancelBtn]}
+                onPress={() => setShowSyncModal(false)}
+                disabled={isSyncing}
+              >
+                <Text style={styles.syncCancelBtnText}>{language === 'ml' ? 'റദ്ദാക്കുക' : 'Cancel'}</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.syncModalBtn, styles.syncSaveBtn]}
+                onPress={handleSaveSyncCode}
+                disabled={isSyncing}
+              >
+                <Text style={styles.syncSaveBtnText}>{language === 'ml' ? 'സൂക്ഷിക്കുക' : 'Save'}</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </KeyboardAvoidingView>
+      </Modal>
       
       {/* App Content */}
       <View style={styles.mainContainer}>
@@ -715,12 +949,12 @@ export default function App() {
           </Text>
         </TouchableOpacity>
         <TouchableOpacity
-          style={[styles.tabItem, currentTab === 'Sheep' && styles.tabItemActive]}
-          onPress={() => { setCurrentTab('Sheep'); setSelectedCrop(sheepCrop || null); }}
+          style={[styles.tabItem, currentTab === 'Goat' && styles.tabItemActive]}
+          onPress={() => { setCurrentTab('Goat'); setSelectedCrop(goatCrop || null); }}
         >
-          <Text style={styles.tabIcon}>🐑</Text>
-          <Text style={[styles.tabLabel, currentTab === 'Sheep' && styles.tabLabelActive]}>
-            {language === 'ml' ? 'ചെമ്മരിയാടുകൾ' : 'Sheep'}
+          <Text style={styles.tabIcon}>🐐</Text>
+          <Text style={[styles.tabLabel, currentTab === 'Goat' && styles.tabLabelActive]}>
+            {language === 'ml' ? 'ആടുകൾ' : 'Goats'}
           </Text>
         </TouchableOpacity>
         <TouchableOpacity
@@ -851,5 +1085,96 @@ const styles = StyleSheet.create({
   tabLabelActive: {
     color: '#1b3a1e',
     fontWeight: '700',
+  },
+  syncModalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'center',
+    padding: 20,
+  },
+  syncModalContent: {
+    backgroundColor: '#ffffff',
+    borderRadius: 16,
+    padding: 24,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.15,
+    shadowRadius: 10,
+    elevation: 8,
+  },
+  syncModalTitle: {
+    fontSize: 18,
+    fontWeight: '800',
+    color: '#1b3a1e',
+    marginBottom: 8,
+  },
+  syncModalDescription: {
+    fontSize: 13,
+    color: '#6e8070',
+    lineHeight: 18,
+    marginBottom: 20,
+  },
+  syncInputLabel: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#1b3a1e',
+    marginBottom: 6,
+  },
+  syncInput: {
+    backgroundColor: '#f1f5f1',
+    borderWidth: 1,
+    borderColor: '#cbd5e1',
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    fontSize: 14,
+    color: '#1b3a1e',
+    marginBottom: 16,
+  },
+  syncActionContainer: {
+    marginBottom: 20,
+    alignItems: 'center',
+    width: '100%',
+  },
+  syncModalBtn: {
+    borderRadius: 8,
+    paddingVertical: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  syncManualBtn: {
+    backgroundColor: '#eef2ff',
+    borderColor: '#c7d2fe',
+    borderWidth: 1,
+    paddingHorizontal: 16,
+    width: '100%',
+  },
+  syncManualBtnText: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#4f46e5',
+  },
+  syncModalActions: {
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    gap: 10,
+  },
+  syncCancelBtn: {
+    backgroundColor: '#f1f5f1',
+    paddingHorizontal: 16,
+  },
+  syncCancelBtnText: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#6e8070',
+  },
+  syncSaveBtn: {
+    backgroundColor: '#1b3a1e',
+    paddingHorizontal: 20,
+  },
+  syncSaveBtnText: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#ffffff',
   },
 });

@@ -1,9 +1,10 @@
 import React, { useState } from 'react';
-import { StyleSheet, Text, View, ScrollView, TouchableOpacity, TextInput, Modal, Alert, Platform } from 'react-native';
+import { StyleSheet, Text, View, ScrollView, TouchableOpacity, TextInput, Modal, Alert, Platform, KeyboardAvoidingView } from 'react-native';
 import { Crop, CropStage, WorkLog } from '../types';
 import { Language, TRANSLATIONS, translateStage, translateActivity } from '../translations';
+import CustomDatePicker from './CustomDatePicker';
 
-interface SheepTabProps {
+interface GoatTabProps {
   workLogs: WorkLog[];
   onUpdateCrop: (crop: Crop) => Promise<any>;
   selectedCrop: Crop | null;
@@ -14,14 +15,14 @@ interface SheepTabProps {
 
 const STAGES: CropStage[] = ['Seedling', 'Vegetative', 'Flowering', 'Fruiting', 'Harvested', 'Archived'];
 
-export default function SheepTab({
+export default function GoatTab({
   workLogs,
   onUpdateCrop,
   selectedCrop,
   onAddWorkLog,
   onDeleteWorkLog,
   language,
-}: SheepTabProps) {
+}: GoatTabProps) {
   const t = TRANSLATIONS[language];
 
   // Work Log Form States
@@ -372,27 +373,27 @@ export default function SheepTab({
       <ScrollView style={styles.container} contentContainerStyle={styles.content}>
 
 
-        {/* Sheep Inventory Card */}
+        {/* Goat Inventory Card */}
         {isGoat && (
           <View style={styles.inventoryCard}>
             <Text style={styles.inventoryTitle}>
-              🐑 {language === 'ml' ? 'ചെമ്മരിയാടുകളുടെ എണ്ണം (നിലവിൽ)' : 'Current Sheep Inventory'}
+              🐐 {language === 'ml' ? 'ആടുകളുടെ എണ്ണം (നിലവിൽ)' : 'Current Goat Inventory'}
             </Text>
             
             <View style={styles.inventoryRow}>
               <View style={styles.inventoryCol}>
                 <Text style={styles.inventoryIcon}>♂️</Text>
-                <Text style={styles.inventoryLabel}>{language === 'ml' ? 'ആൺ ചെമ്മരിയാടുകൾ' : 'Males'}</Text>
+                <Text style={styles.inventoryLabel}>{language === 'ml' ? 'ആൺ ആടുകൾ' : 'Males'}</Text>
                 <Text style={styles.inventoryValue}>{selectedCrop.malesCount || 0}</Text>
               </View>
               <View style={styles.inventoryCol}>
                 <Text style={styles.inventoryIcon}>♀️</Text>
-                <Text style={styles.inventoryLabel}>{language === 'ml' ? 'പെൺ ചെമ്മരിയാടുകൾ' : 'Females'}</Text>
+                <Text style={styles.inventoryLabel}>{language === 'ml' ? 'പെൺ ആടുകൾ' : 'Females'}</Text>
                 <Text style={styles.inventoryValue}>{selectedCrop.femalesCount || 0}</Text>
               </View>
               <View style={styles.inventoryCol}>
                 <Text style={styles.inventoryIcon}>👶</Text>
-                <Text style={styles.inventoryLabel}>{language === 'ml' ? 'കുട്ടികൾ' : 'Lambs'}</Text>
+                <Text style={styles.inventoryLabel}>{language === 'ml' ? 'കുട്ടികൾ' : 'Kids'}</Text>
                 <Text style={styles.inventoryValue}>{selectedCrop.kidsCount || 0}</Text>
               </View>
             </View>
@@ -400,7 +401,7 @@ export default function SheepTab({
             <View style={styles.inventoryDivider} />
 
             <View style={styles.inventoryTotalRow}>
-              <Text style={styles.inventoryTotalLabel}>{language === 'ml' ? 'ആകെ ചെമ്മരിയാടുകൾ' : 'Total Sheep'}</Text>
+              <Text style={styles.inventoryTotalLabel}>{language === 'ml' ? 'ആകെ ആടുകൾ' : 'Total Goats'}</Text>
               <Text style={styles.inventoryTotalValue}>
                 {(selectedCrop.malesCount || 0) + (selectedCrop.femalesCount || 0) + (selectedCrop.kidsCount || 0)}
               </Text>
@@ -557,13 +558,13 @@ export default function SheepTab({
                   setShowWorkLogModal(true);
                 }}
               >
-                <Text style={styles.detailActionBtnText}>🛒 {language === 'ml' ? 'ചെമ്മരിയാടുകളെ വാങ്ങുക' : 'Buy Sheep'}</Text>
+                <Text style={styles.detailActionBtnText}>🛒 {language === 'ml' ? 'ആടുകളെ വാങ്ങുക' : 'Buy Goats'}</Text>
               </TouchableOpacity>
 
               <TouchableOpacity 
                 style={[styles.goatActionBtn, { backgroundColor: '#2e7d32' }]} 
                 onPress={() => {
-                  setEarningsItem(language === 'ml' ? 'ചെമ്മരിയാടുകളെ വിറ്റത്' : 'Sheep Sold');
+                  setEarningsItem(language === 'ml' ? 'ആടുകളെ വിറ്റത്' : 'Goats Sold');
                   setEarningsMalesCount('');
                   setEarningsFemalesCount('');
                   setEarningsKidsCount('');
@@ -573,7 +574,7 @@ export default function SheepTab({
                   setShowEarningsModal(true);
                 }}
               >
-                <Text style={styles.detailActionBtnText}>💰 {language === 'ml' ? 'ചെമ്മരിയാടുകളെ വിൽക്കുക' : 'Sell Sheep'}</Text>
+                <Text style={styles.detailActionBtnText}>💰 {language === 'ml' ? 'ആടുകളെ വിൽക്കുക' : 'Sell Goats'}</Text>
               </TouchableOpacity>
 
               {/* Row 2 */}
@@ -678,8 +679,8 @@ export default function SheepTab({
                           {log.yieldKg ? (
                             <Text style={styles.timelineHarvestText}>
                               {isGoat ? (
-                                log.activityType === 'Buying' ? (language === 'ml' ? '📦 വാങ്ങിയ എണ്ണം: ' : '📦 Sheep Bought: ') :
-                                log.activityType === 'New Babies' ? (language === 'ml' ? '👶 ഉണ്ടായ കുഞ്ഞുങ്ങൾ: ' : '👶 Lambs Born: ') :
+                                log.activityType === 'Buying' ? (language === 'ml' ? '📦 വാങ്ങിയ എണ്ണം: ' : '📦 Goats Bought: ') :
+                                log.activityType === 'New Babies' ? (language === 'ml' ? '👶 ഉണ്ടായ കുഞ്ഞുങ്ങൾ: ' : '👶 Kids Born: ') :
                                 log.activityType === 'Feed / Food' ? (language === 'ml' ? '🌾 തീറ്റയുടെ അളവ്: ' : '🌾 Feed Qty: ') :
                                 '📦 Quantity: '
                               ) : (
@@ -705,12 +706,12 @@ export default function SheepTab({
                           ) : null}
                           {log.motherGoat ? (
                             <Text style={styles.timelineHarvestText}>
-                              👩‍👧 {language === 'ml' ? `തള്ള ചെമ്മരിയാട്: ${log.motherGoat}` : `Mother Sheep: ${log.motherGoat}`}
+                              👩‍👧 {language === 'ml' ? `തള്ളയാട്: ${log.motherGoat}` : `Mother Goat: ${log.motherGoat}`}
                             </Text>
                           ) : null}
                           {log.breededGoat ? (
                             <Text style={styles.timelineHarvestText}>
-                              💕 {language === 'ml' ? `ഇണചേർത്ത ചെമ്മരിയാട്: ${log.breededGoat}` : `Bred Sheep: ${log.breededGoat}`}
+                              💕 {language === 'ml' ? `ഇണചേർത്ത ആട്: ${log.breededGoat}` : `Bred Goat: ${log.breededGoat}`}
                             </Text>
                           ) : null}
                         </View>
@@ -761,13 +762,20 @@ export default function SheepTab({
           </>
       </ScrollView>
 
-      {/* Log Work Modal */}
-      <Modal visible={showWorkLogModal} animationType="slide" transparent={true}>
-        <View style={styles.modalOverlay}>
+      <Modal 
+        visible={showWorkLogModal} 
+        animationType="slide" 
+        transparent={true}
+        onRequestClose={() => setShowWorkLogModal(false)}
+      >
+        <KeyboardAvoidingView
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+          style={styles.modalOverlay}
+        >
           <View style={styles.modalContent}>
             <Text style={styles.modalTitle}>
               {isGoat 
-                ? (language === 'ml' ? 'ചെമ്മരിയാട് ഫാം വിവരങ്ങൾ രേഖപ്പെടുത്തുക' : 'Record Sheep Farm Activity') 
+                ? (language === 'ml' ? 'ആട് ഫാം വിവരങ്ങൾ രേഖപ്പെടുത്തുക' : 'Record Goat Farm Activity') 
                 : t.logWork
               }
             </Text>
@@ -776,9 +784,9 @@ export default function SheepTab({
               {isGoat ? (
                 <View style={{ backgroundColor: '#f1f5f1', borderRadius: 10, padding: 12, marginBottom: 15, borderLeftWidth: 4, borderLeftColor: '#1b3a1e' }}>
                   <Text style={{ fontSize: 14, fontWeight: '700', color: '#1b3a1e' }}>
-                    {workActivity === 'Buying' ? (language === 'ml' ? '🛒 ചെമ്മരിയാടുകളെ വാങ്ങൽ' : '🛒 Buying Sheep') :
-                     workActivity === 'Breeding' ? (language === 'ml' ? '💕 ഇണചേർക്കൽ രേഖപ്പെടുത്തൽ' : '💕 Logging Breeding') :
-                     workActivity === 'New Babies' ? (language === 'ml' ? '👶 പ്രസവം / കുഞ്ഞുങ്ങൾ' : '👶 New Born Lambs') :
+                    {workActivity === 'Buying' ? (language === 'ml' ? '🛒 ആടുകളെ വാങ്ങൽ' : '🛒 Buying Goats') :
+                     workActivity === 'Breeding' ? (language === 'ml' ? '💕 പ്രജനനം രേഖപ്പെടുത്തൽ' : '💕 Logging Breeding') :
+                     workActivity === 'New Babies' ? (language === 'ml' ? '👶 പ്രസവം / കുഞ്ഞുങ്ങൾ' : '👶 New Born Kids') :
                      (language === 'ml' ? `പ്രവർത്തനം: ${workActivity}` : `Activity: ${workActivity}`)}
                   </Text>
                 </View>
@@ -849,16 +857,16 @@ export default function SheepTab({
 
                   {isNewBabies && (
                     <>
-                      <Text style={styles.inputLabel}>{language === 'ml' ? 'തള്ള ചെമ്മരിയാട് *' : 'Mother Sheep *'}</Text>
+                      <Text style={styles.inputLabel}>{language === 'ml' ? 'തള്ളയാട് *' : 'Mother Goat *'}</Text>
                       <TextInput 
                         style={styles.input} 
-                        placeholder={language === 'ml' ? 'ഉദാ: തള്ളയുടെ പേര്/നമ്പർ' : 'e.g. Mother Sheep name/ID'} 
+                        placeholder={language === 'ml' ? 'ഉദാ: തള്ളയുടെ പേര്/നമ്പർ' : 'e.g. Mother Goat name/ID'} 
                         value={workMotherGoat} 
                         onChangeText={setWorkMotherGoat} 
                       />
                       <View style={styles.row}>
                         <View style={styles.col}>
-                          <Text style={styles.inputLabel}>{language === 'ml' ? 'ആൺ കുട്ടികൾ' : 'Male Lambs Born'}</Text>
+                          <Text style={styles.inputLabel}>{language === 'ml' ? 'ആൺ കുട്ടികൾ' : 'Male Kids Born'}</Text>
                           <TextInput 
                             style={styles.input} 
                             keyboardType="numeric" 
@@ -868,7 +876,7 @@ export default function SheepTab({
                           />
                         </View>
                         <View style={styles.col}>
-                          <Text style={styles.inputLabel}>{language === 'ml' ? 'പെൺ കുട്ടികൾ' : 'Female Lambs Born'}</Text>
+                          <Text style={styles.inputLabel}>{language === 'ml' ? 'പെൺ കുട്ടികൾ' : 'Female Kids Born'}</Text>
                           <TextInput 
                             style={styles.input} 
                             keyboardType="numeric" 
@@ -883,10 +891,10 @@ export default function SheepTab({
 
                   {workActivity === 'Breeding' && (
                     <>
-                      <Text style={styles.inputLabel}>{language === 'ml' ? 'ഇണചേർത്ത ചെമ്മരിയാട് *' : 'Bred Sheep *'}</Text>
+                      <Text style={styles.inputLabel}>{language === 'ml' ? 'ഇണചേർത്ത ആട് *' : 'Bred Goat *'}</Text>
                       <TextInput 
                         style={styles.input} 
-                        placeholder={language === 'ml' ? 'ഉദാ: ചെമ്മരിയാടിന്റെ പേര്/നമ്പർ' : 'e.g. Bred Sheep name/ID'} 
+                        placeholder={language === 'ml' ? 'ഉദാ: ആടിന്റെ പേര്/നമ്പർ' : 'e.g. Bred Goat name/ID'} 
                         value={workBreededGoat} 
                         onChangeText={setWorkBreededGoat} 
                       />
@@ -1015,7 +1023,11 @@ export default function SheepTab({
               )}
 
               <Text style={styles.inputLabel}>{t.date}</Text>
-              <TextInput style={styles.input} value={workDate} onChangeText={setWorkDate} />
+              <CustomDatePicker 
+                value={workDate} 
+                onChange={setWorkDate} 
+                language={language} 
+              />
 
               <Text style={styles.inputLabel}>{t.notes}</Text>
               <TextInput style={[styles.input, styles.textArea]} multiline={true} value={workNotes} onChangeText={setWorkNotes} />
@@ -1030,14 +1042,22 @@ export default function SheepTab({
               </TouchableOpacity>
             </View>
           </View>
-        </View>
+        </KeyboardAvoidingView>
       </Modal>
 
 
 
       {/* Record Earnings Modal */}
-      <Modal visible={showEarningsModal} animationType="slide" transparent={true}>
-        <View style={styles.modalOverlay}>
+      <Modal 
+        visible={showEarningsModal} 
+        animationType="slide" 
+        transparent={true}
+        onRequestClose={() => setShowEarningsModal(false)}
+      >
+        <KeyboardAvoidingView
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+          style={styles.modalOverlay}
+        >
           <View style={styles.modalContent}>
             <Text style={styles.modalTitle}>
               {isGoat 
@@ -1104,7 +1124,11 @@ export default function SheepTab({
                   </View>
 
               <Text style={styles.inputLabel}>{t.date}</Text>
-              <TextInput style={styles.input} value={earningsDate} onChangeText={setEarningsDate} />
+              <CustomDatePicker 
+                value={earningsDate} 
+                onChange={setEarningsDate} 
+                language={language} 
+              />
 
               <Text style={styles.inputLabel}>{t.notes}</Text>
               <TextInput style={[styles.input, styles.textArea]} multiline={true} value={earningsNotes} onChangeText={setEarningsNotes} />
@@ -1119,26 +1143,34 @@ export default function SheepTab({
               </TouchableOpacity>
             </View>
           </View>
-        </View>
+        </KeyboardAvoidingView>
       </Modal>
 
 
 
       {/* Adjust Inventory Modal */}
-      <Modal visible={showAdjustModal} animationType="slide" transparent={true}>
-        <View style={styles.modalOverlay}>
+      <Modal 
+        visible={showAdjustModal} 
+        animationType="slide" 
+        transparent={true}
+        onRequestClose={() => setShowAdjustModal(false)}
+      >
+        <KeyboardAvoidingView
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+          style={styles.modalOverlay}
+        >
           <View style={styles.modalContent}>
             <Text style={styles.modalTitle}>
               ⚙️ {language === 'ml' ? 'എണ്ണം ക്രമീകരിക്കുക / തിരുത്തുക' : 'Adjust Inventory'}
             </Text>
             <Text style={{ fontSize: 13, color: '#666', marginBottom: 15, lineHeight: 18 }}>
               {language === 'ml' 
-                ? 'നിലവിലുള്ള ചെമ്മരിയാടുകളുടെ എണ്ണം ഇവിടെ നേരിട്ട് മാറ്റിയെഴുതാവുന്നതാണ്. ഇത് മുൻപുള്ള വിവരങ്ങളെ ബാധിക്കില്ല.' 
-                : 'Directly override the counts of your sheep in stock. This manual adjustment won\'t affect historical logs.'}
+                ? 'നിലവിലുള്ള ആടുകളുടെ എണ്ണം ഇവിടെ നേരിട്ട് മാറ്റിയെഴുതാവുന്നതാണ്. ഇത് മുൻപുള്ള വിവരങ്ങളെ ബാധിക്കില്ല.' 
+                : 'Directly override the counts of your goats in stock. This manual adjustment won\'t affect historical logs.'}
             </Text>
 
             <ScrollView style={styles.modalForm}>
-              <Text style={styles.inputLabel}>{language === 'ml' ? 'ആൺ ചെമ്മരിയാടുകൾ' : 'Males'}</Text>
+              <Text style={styles.inputLabel}>{language === 'ml' ? 'ആൺ ആടുകൾ' : 'Males'}</Text>
               <TextInput 
                 style={styles.input} 
                 keyboardType="numeric" 
@@ -1146,7 +1178,7 @@ export default function SheepTab({
                 onChangeText={setAdjustMales} 
               />
 
-              <Text style={styles.inputLabel}>{language === 'ml' ? 'പെൺ ചെമ്മരിയാടുകൾ' : 'Females'}</Text>
+              <Text style={styles.inputLabel}>{language === 'ml' ? 'പെൺ ആടുകൾ' : 'Females'}</Text>
               <TextInput 
                 style={styles.input} 
                 keyboardType="numeric" 
@@ -1154,7 +1186,7 @@ export default function SheepTab({
                 onChangeText={setAdjustFemales} 
               />
 
-              <Text style={styles.inputLabel}>{language === 'ml' ? 'കുട്ടികൾ' : 'Lambs'}</Text>
+              <Text style={styles.inputLabel}>{language === 'ml' ? 'കുട്ടികൾ' : 'Kids'}</Text>
               <TextInput 
                 style={styles.input} 
                 keyboardType="numeric" 
@@ -1172,23 +1204,31 @@ export default function SheepTab({
               </TouchableOpacity>
             </View>
           </View>
-        </View>
+        </KeyboardAvoidingView>
       </Modal>
       {/* Stage Count / Manual Entry Modal */}
-      <Modal visible={showStageCountModal} animationType="slide" transparent={true}>
-        <View style={styles.modalOverlay}>
+      <Modal 
+        visible={showStageCountModal} 
+        animationType="slide" 
+        transparent={true}
+        onRequestClose={() => setShowStageCountModal(false)}
+      >
+        <KeyboardAvoidingView
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+          style={styles.modalOverlay}
+        >
           <View style={styles.modalContent}>
             <Text style={styles.modalTitle}>
-              🐑 {translateStage(targetStageForModal, language, true)}
+              🐐 {translateStage(targetStageForModal, language, true)}
             </Text>
             <Text style={{ fontSize: 13, color: '#666', marginBottom: 15, lineHeight: 18 }}>
               {language === 'ml' 
-                ? `ഈ ഘട്ടത്തിലുള്ള ചെമ്മരിയാടുകളുടെ എണ്ണം പരിശോധിക്കുകയോ നേരിട്ട് മാറ്റി എഴുതുകയോ ചെയ്യാം.` 
-                : `View or manually enter the number of sheep currently in this growth stage.`}
+                ? `ഈ ഘട്ടത്തിലുള്ള ആടുകളുടെ എണ്ണം പരിശോധിക്കുകയോ നേരിട്ട് മാറ്റി എഴുതുകയോ ചെയ്യാം.` 
+                : `View or manually enter the number of goats currently in this growth stage.`}
             </Text>
 
             <Text style={styles.inputLabel}>
-              {language === 'ml' ? 'ചെമ്മരിയാടുകളുടെ എണ്ണം *' : 'Number of Sheep *'}
+              {language === 'ml' ? 'ആടുകളുടെ എണ്ണം *' : 'Number of Goats *'}
             </Text>
             <TextInput 
               style={styles.input} 
@@ -1225,12 +1265,20 @@ export default function SheepTab({
               </TouchableOpacity>
             </View>
           </View>
-        </View>
+        </KeyboardAvoidingView>
       </Modal>
 
       {/* Food Expenses Modal */}
-      <Modal visible={showFeedModal} animationType="slide" transparent={true}>
-        <View style={styles.modalOverlay}>
+      <Modal 
+        visible={showFeedModal} 
+        animationType="slide" 
+        transparent={true}
+        onRequestClose={() => setShowFeedModal(false)}
+      >
+        <KeyboardAvoidingView
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+          style={styles.modalOverlay}
+        >
           <View style={styles.modalContent}>
             <Text style={styles.modalTitle}>
               🌾 {language === 'ml' ? 'തീറ്റ ചിലവ് രേഖപ്പെടുത്തുക' : 'Log Feed Expense'}
@@ -1269,10 +1317,10 @@ export default function SheepTab({
               </View>
 
               <Text style={styles.inputLabel}>{language === 'ml' ? 'തീയതി *' : 'Date *'}</Text>
-              <TextInput
-                style={styles.input}
-                value={feedDate}
-                onChangeText={setFeedDate}
+              <CustomDatePicker 
+                value={feedDate} 
+                onChange={setFeedDate} 
+                language={language} 
               />
 
               <Text style={styles.inputLabel}>{language === 'ml' ? 'കുറിപ്പുകൾ' : 'Notes'}</Text>
@@ -1294,7 +1342,7 @@ export default function SheepTab({
               </TouchableOpacity>
             </View>
           </View>
-        </View>
+        </KeyboardAvoidingView>
       </Modal>
     </View>
   );

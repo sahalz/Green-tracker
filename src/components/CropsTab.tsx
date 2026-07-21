@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
-import { StyleSheet, Text, View, ScrollView, TouchableOpacity, TextInput, Modal, Alert, Platform } from 'react-native';
+import { StyleSheet, Text, View, ScrollView, TouchableOpacity, TextInput, Modal, Alert, Platform, KeyboardAvoidingView } from 'react-native';
 import { Crop, CropStage, WorkLog, PesticideLog } from '../types';
 import { Language, TRANSLATIONS, translateStage, translateActivity } from '../translations';
+import CustomDatePicker from './CustomDatePicker';
 
 interface CropsTabProps {
   crops: Crop[];
@@ -1034,8 +1035,16 @@ export default function CropsTab({
       </ScrollView>
 
       {/* Log Work Modal */}
-      <Modal visible={showWorkLogModal} animationType="slide" transparent={true}>
-        <View style={styles.modalOverlay}>
+      <Modal 
+        visible={showWorkLogModal} 
+        animationType="slide" 
+        transparent={true}
+        onRequestClose={() => setShowWorkLogModal(false)}
+      >
+        <KeyboardAvoidingView
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+          style={styles.modalOverlay}
+        >
           <View style={styles.modalContent}>
             <Text style={styles.modalTitle}>
               {isGoat 
@@ -1287,7 +1296,11 @@ export default function CropsTab({
               )}
 
               <Text style={styles.inputLabel}>{t.date}</Text>
-              <TextInput style={styles.input} value={workDate} onChangeText={setWorkDate} />
+              <CustomDatePicker 
+                value={workDate} 
+                onChange={setWorkDate} 
+                language={language} 
+              />
 
               <Text style={styles.inputLabel}>{t.notes}</Text>
               <TextInput style={[styles.input, styles.textArea]} multiline={true} value={workNotes} onChangeText={setWorkNotes} />
@@ -1302,12 +1315,20 @@ export default function CropsTab({
               </TouchableOpacity>
             </View>
           </View>
-        </View>
+        </KeyboardAvoidingView>
       </Modal>
 
       {/* Spray Log Modal */}
-      <Modal visible={showSprayLogModal} animationType="slide" transparent={true}>
-        <View style={styles.modalOverlay}>
+      <Modal 
+        visible={showSprayLogModal} 
+        animationType="slide" 
+        transparent={true}
+        onRequestClose={() => setShowSprayLogModal(false)}
+      >
+        <KeyboardAvoidingView
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+          style={styles.modalOverlay}
+        >
           <View style={styles.modalContent}>
             <Text style={styles.modalTitle}>{t.sprayLog}</Text>
             
@@ -1430,7 +1451,11 @@ export default function CropsTab({
               <Text style={styles.helperText}>{t.pesticideHelper}</Text>
 
               <Text style={styles.inputLabel}>{t.date}</Text>
-              <TextInput style={styles.input} value={sprayDate} onChangeText={setSprayDate} />
+              <CustomDatePicker 
+                value={sprayDate} 
+                onChange={setSprayDate} 
+                language={language} 
+              />
             </ScrollView>
 
             <View style={styles.modalActions}>
@@ -1442,12 +1467,20 @@ export default function CropsTab({
               </TouchableOpacity>
             </View>
           </View>
-        </View>
+        </KeyboardAvoidingView>
       </Modal>
 
       {/* Record Earnings Modal */}
-      <Modal visible={showEarningsModal} animationType="slide" transparent={true}>
-        <View style={styles.modalOverlay}>
+      <Modal 
+        visible={showEarningsModal} 
+        animationType="slide" 
+        transparent={true}
+        onRequestClose={() => setShowEarningsModal(false)}
+      >
+        <KeyboardAvoidingView
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+          style={styles.modalOverlay}
+        >
           <View style={styles.modalContent}>
             <Text style={styles.modalTitle}>
               {isGoat 
@@ -1581,7 +1614,11 @@ export default function CropsTab({
               )}
 
               <Text style={styles.inputLabel}>{t.date}</Text>
-              <TextInput style={styles.input} value={earningsDate} onChangeText={setEarningsDate} />
+              <CustomDatePicker 
+                value={earningsDate} 
+                onChange={setEarningsDate} 
+                language={language} 
+              />
 
               <Text style={styles.inputLabel}>{t.notes}</Text>
               <TextInput style={[styles.input, styles.textArea]} multiline={true} value={earningsNotes} onChangeText={setEarningsNotes} />
@@ -1596,11 +1633,16 @@ export default function CropsTab({
               </TouchableOpacity>
             </View>
           </View>
-        </View>
+        </KeyboardAvoidingView>
       </Modal>
 
       {/* Input Choice Modal */}
-      <Modal visible={showInputChoiceModal} animationType="fade" transparent={true}>
+      <Modal 
+        visible={showInputChoiceModal} 
+        animationType="fade" 
+        transparent={true}
+        onRequestClose={() => setShowInputChoiceModal(false)}
+      >
         <View style={styles.choiceModalOverlay}>
           <View style={styles.choiceModalContent}>
             <Text style={styles.choiceModalTitle}>{t.selectInputType}</Text>
@@ -1637,8 +1679,16 @@ export default function CropsTab({
       </Modal>
 
       {/* Record Manure Modal */}
-      <Modal visible={showManureLogModal} animationType="slide" transparent={true}>
-        <View style={styles.modalOverlay}>
+      <Modal 
+        visible={showManureLogModal} 
+        animationType="slide" 
+        transparent={true}
+        onRequestClose={() => setShowManureLogModal(false)}
+      >
+        <KeyboardAvoidingView
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+          style={styles.modalOverlay}
+        >
           <View style={styles.modalContent}>
             <Text style={styles.modalTitle}>{t.recordManureMenu}</Text>
             
@@ -1709,7 +1759,11 @@ export default function CropsTab({
               </View>
 
               <Text style={styles.inputLabel}>{t.date}</Text>
-              <TextInput style={styles.input} value={manureLogDate} onChangeText={setManureLogDate} />
+              <CustomDatePicker 
+                value={manureLogDate} 
+                onChange={setManureLogDate} 
+                language={language} 
+              />
 
               <Text style={styles.inputLabel}>{t.notes}</Text>
               <TextInput style={[styles.input, styles.textArea]} multiline={true} value={manureLogNotes} onChangeText={setManureLogNotes} />
@@ -1724,7 +1778,7 @@ export default function CropsTab({
               </TouchableOpacity>
             </View>
           </View>
-        </View>
+        </KeyboardAvoidingView>
       </Modal>
 
 

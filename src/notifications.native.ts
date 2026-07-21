@@ -140,3 +140,45 @@ export async function syncCardamomNotifications(crops: Crop[], pesticideLogs: Pe
     console.warn('Error syncing cardamom notifications:', error);
   }
 }
+
+// Schedule daily fish feeding notification
+export async function scheduleDailyFishFeedingNotification(hour: number, minute: number): Promise<boolean> {
+  if (Platform.OS === 'web') return false;
+  try {
+    const hasPermission = await requestNotificationPermissions();
+    if (!hasPermission) return false;
+
+    // Cancel existing one first to avoid duplicates
+    await cancelFishFeedingNotification();
+
+    await Notifications.scheduleNotificationAsync({
+      identifier: 'fish-feeding-daily',
+      content: {
+        title: 'Time to Feed the Fish! 🐟',
+        body: 'Please feed your fish as scheduled.',
+        sound: true,
+      },
+      trigger: {
+        type: Notifications.SchedulableTriggerInputTypes.CALENDAR,
+        hour,
+        minute,
+        repeats: true,
+      },
+    });
+    return true;
+  } catch (error) {
+    console.warn('Error scheduling daily fish feeding notification:', error);
+    return false;
+  }
+}
+
+// Cancel daily fish feeding notification
+export async function cancelFishFeedingNotification(): Promise<void> {
+  if (Platform.OS === 'web') return;
+  try {
+    await Notifications.cancelScheduledNotificationAsync('fish-feeding-daily');
+  } catch (error) {
+    console.warn('Error cancelling daily fish feeding notification:', error);
+  }
+}
+

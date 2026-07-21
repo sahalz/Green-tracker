@@ -22,6 +22,7 @@ export interface Crop {
   stageCountLactating?: number;
   stageCountArchived?: number;
   fishCount?: number;
+  syncCode?: string;
 }
 
 export interface WorkLog {
@@ -51,6 +52,7 @@ export interface WorkLog {
   kidsConverted?: boolean;
   fishCount?: number;
   phValue?: number;
+  syncCode?: string;
 }
 
 export interface PesticideLog {
@@ -67,5 +69,7 @@ export interface PesticideLog {
   cost?: number;
   noOfWorkers?: number;
   laborCostPerWorker?: number;
+  syncCode?: string;
 }
+
 

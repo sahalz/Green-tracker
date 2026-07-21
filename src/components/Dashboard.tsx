@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
-import { StyleSheet, Text, View, ScrollView, TouchableOpacity, TextInput, Modal, Alert } from 'react-native';
+import { StyleSheet, Text, View, ScrollView, TouchableOpacity, TextInput, Modal, Alert, KeyboardAvoidingView, Platform } from 'react-native';
 import { Crop, CropStage, WorkLog, PesticideLog } from '../types';
 import { Language, TRANSLATIONS, translateStage, translateActivity } from '../translations';
+import CustomDatePicker from './CustomDatePicker';
 
 interface DashboardProps {
   crops: Crop[];
@@ -396,8 +397,16 @@ export default function Dashboard({ crops, workLogs, pesticideLogs, onSelectCrop
       </ScrollView>
 
       {/* Add Crop Modal */}
-      <Modal visible={showAddModal} animationType="slide" transparent={true}>
-        <View style={styles.modalOverlay}>
+      <Modal 
+        visible={showAddModal} 
+        animationType="slide" 
+        transparent={true}
+        onRequestClose={() => setShowAddModal(false)}
+      >
+        <KeyboardAvoidingView
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+          style={styles.modalOverlay}
+        >
           <View style={styles.modalContent}>
             <Text style={styles.modalTitle}>{t.registerNewCrop}</Text>
             
@@ -432,10 +441,19 @@ export default function Dashboard({ crops, workLogs, pesticideLogs, onSelectCrop
               <TextInput style={styles.input} placeholder={language === 'ml' ? 'ഉദാ: പ്ലോട്ട് എ, ചരിവ് പ്രദേശം' : 'e.g. Plot A, Slope Area'} value={field} onChangeText={setField} />
               
               <Text style={styles.inputLabel}>{t.plantingDateLabel}</Text>
-              <TextInput style={styles.input} value={plantingDate} onChangeText={setPlantingDate} />
+              <CustomDatePicker 
+                value={plantingDate} 
+                onChange={setPlantingDate} 
+                language={language} 
+              />
 
               <Text style={styles.inputLabel}>{t.expectedHarvestLabel}</Text>
-              <TextInput style={styles.input} placeholder="YYYY-MM-DD" value={expectedHarvestDate} onChangeText={setExpectedHarvestDate} />
+              <CustomDatePicker 
+                value={expectedHarvestDate} 
+                onChange={setExpectedHarvestDate} 
+                language={language} 
+                placeholder="YYYY-MM-DD"
+              />
 
               <Text style={styles.inputLabel}>{t.notes}</Text>
               <TextInput style={[styles.input, styles.textArea]} multiline={true} placeholder={language === 'ml' ? 'കുറിപ്പുകൾ...' : 'Growth notes...'} value={notes} onChangeText={setNotes} />
@@ -450,7 +468,7 @@ export default function Dashboard({ crops, workLogs, pesticideLogs, onSelectCrop
               </TouchableOpacity>
             </View>
           </View>
-        </View>
+        </KeyboardAvoidingView>
       </Modal>
     </View>
   );
