@@ -5,7 +5,7 @@ import { Language, TRANSLATIONS, translateStage, translateActivity } from '../tr
 import CustomDatePicker from './CustomDatePicker';
 import CustomTimePickerModal from './CustomTimePickerModal';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { scheduleDailyFishFeedingNotification, cancelFishFeedingNotification } from '../notifications';
+import { scheduleDailyFishFeedingNotification, cancelFishFeedingNotification, testFishFeedingNotification } from '../notifications';
 
 interface FishTabProps {
   workLogs: WorkLog[];
@@ -33,39 +33,52 @@ export default function FishTab({
 
   useEffect(() => {
     if (selectedCrop) {
-      const loadReminderSettings = async () => {
+      const syncReminderState = async () => {
         try {
-          const enabledVal = await AsyncStorage.getItem(`fish_feed_reminder_enabled_${selectedCrop.id}`);
-          const timeVal = await AsyncStorage.getItem(`fish_feed_reminder_time_${selectedCrop.id}`);
-          if (enabledVal !== null) {
-            setReminderEnabled(enabledVal === 'true');
-          } else {
-            setReminderEnabled(false);
+          let enabled = selectedCrop.feedReminderEnabled;
+          let time = selectedCrop.feedReminderTime;
+
+          if (enabled === undefined) {
+            const enabledVal = await AsyncStorage.getItem(`fish_feed_reminder_enabled_${selectedCrop.id}`);
+            enabled = enabledVal === 'true';
           }
-          if (timeVal !== null) {
-            setReminderTime(timeVal);
+          if (!time) {
+            const timeVal = await AsyncStorage.getItem(`fish_feed_reminder_time_${selectedCrop.id}`);
+            time = timeVal || '08:00';
+          }
+
+          setReminderEnabled(!!enabled);
+          setReminderTime(time);
+
+          if (enabled && time) {
+            const [hour, minute] = time.split(':').map(Number);
+            await scheduleDailyFishFeedingNotification(hour, minute);
           } else {
-            setReminderTime('08:00');
+            await cancelFishFeedingNotification();
           }
         } catch (e) {
           console.warn('Error loading reminder settings:', e);
         }
       };
-      loadReminderSettings();
+      syncReminderState();
     }
-  }, [selectedCrop]);
+  }, [selectedCrop?.id, selectedCrop?.feedReminderEnabled, selectedCrop?.feedReminderTime]);
 
   const handleToggleReminder = async (value: boolean) => {
     if (!selectedCrop) return;
     try {
       setReminderEnabled(value);
       await AsyncStorage.setItem(`fish_feed_reminder_enabled_${selectedCrop.id}`, String(value));
+      await onUpdateCrop({
+        ...selectedCrop,
+        feedReminderEnabled: value,
+        feedReminderTime: reminderTime,
+      });
+
       if (value) {
-        // Schedule it
         const [hour, minute] = reminderTime.split(':').map(Number);
         await scheduleDailyFishFeedingNotification(hour, minute);
       } else {
-        // Cancel it
         await cancelFishFeedingNotification();
       }
     } catch (e) {
@@ -78,13 +91,37 @@ export default function FishTab({
     try {
       setReminderTime(time24h);
       await AsyncStorage.setItem(`fish_feed_reminder_time_${selectedCrop.id}`, time24h);
+      await onUpdateCrop({
+        ...selectedCrop,
+        feedReminderEnabled: reminderEnabled,
+        feedReminderTime: time24h,
+      });
+
       if (reminderEnabled) {
-        // Reschedule with new time
         const [hour, minute] = time24h.split(':').map(Number);
         await scheduleDailyFishFeedingNotification(hour, minute);
       }
     } catch (e) {
       console.warn('Error saving reminder time:', e);
+    }
+  };
+
+  const handleTestNotification = async () => {
+    const success = await testFishFeedingNotification();
+    if (success) {
+      Alert.alert(
+        language === 'ml' ? 'ടെസ്റ്റ് അലേർട്ട്' : 'Test Scheduled',
+        language === 'ml' 
+          ? '5 സെക്കൻഡിനുള്ളിൽ നിങ്ങൾക്ക് തീറ്റ നൽകാനുള്ള നോട്ടിഫിക്കേഷൻ ലഭിക്കും!' 
+          : 'You will receive a test fish feeding notification in 5 seconds!'
+      );
+    } else {
+      Alert.alert(
+        language === 'ml' ? 'അറിയിപ്പ്' : 'Notice',
+        language === 'ml' 
+          ? 'നോട്ടിഫിക്കേഷൻ പ്രവർത്തിക്കാൻ ഇൻസ്റ്റാൾ ചെയ്ത APK ബിൽഡ് ആവശ്യമാണ് (Expo Go യിൽ ഡിസേബിൾ ആണ്).' 
+          : 'Notifications require an installed standalone APK build (disabled in Expo Go dev app).'
+      );
     }
   };
 
@@ -572,24 +609,24 @@ export default function FishTab({
         {/* Daily Feeding Reminder Card */}
         <View style={styles.ledgerCard}>
           <Text style={styles.ledgerTitle}>🔔 {language === 'ml' ? 'ദിനചര്യ ഓർമ്മപ്പെടുത്തൽ' : 'Daily Feeding Reminder'}</Text>
-          <View style={styles.reminderRow}>
-            <View style={{ flex: 1 }}>
+          <View style={styles.reminderContainer}>
+            <View style={styles.reminderInfoRow}>
               <Text style={styles.reminderStatusLabel}>
                 {language === 'ml' 
-                  ? (reminderEnabled ? 'ഓർമ്മപ്പെടുത്തൽ സജീവമാണ്' : 'ഓർമ്മപ്പെടുത്തൽ നിർജ്ജീവമാണ്') 
-                  : (reminderEnabled ? 'Reminder is Active' : 'Reminder is Inactive')}
+                  ? (reminderEnabled ? 'അവസ്ഥ: സജീവം ✓' : 'അവസ്ഥ: നിർജ്ജീവം') 
+                  : (reminderEnabled ? 'Status: Active ✓' : 'Status: Inactive')}
               </Text>
               <Text style={styles.reminderTimeText}>
                 ⏰ {language === 'ml' ? 'തീറ്റ സമയം: ' : 'Feeding Time: '}
                 <Text style={{ fontWeight: 'bold', color: '#006064' }}>{formatTime12h(reminderTime)}</Text>
               </Text>
             </View>
-            <View style={styles.reminderActions}>
+            <View style={styles.reminderActionsRow}>
               <TouchableOpacity
-                style={[styles.timePickerToggleBtn, { marginRight: 10 }]}
+                style={styles.timePickerToggleBtn}
                 onPress={() => setShowTimePicker(true)}
               >
-                <Text style={styles.timePickerToggleBtnText}>⏰ {language === 'ml' ? 'സമയം മാറ്റുക' : 'Set Time'}</Text>
+                <Text style={styles.timePickerToggleBtnText}>⏰ {language === 'ml' ? 'സമയം' : 'Set Time'}</Text>
               </TouchableOpacity>
               
               <TouchableOpacity
@@ -598,9 +635,16 @@ export default function FishTab({
               >
                 <Text style={styles.reminderToggleBtnText}>
                   {reminderEnabled 
-                    ? (language === 'ml' ? 'ഓഫ് ചെയ്യുക' : 'Disable') 
-                    : (language === 'ml' ? 'ഓൺ ചെയ്യുക' : 'Enable')}
+                    ? (language === 'ml' ? 'ഓഫ്' : 'Disable') 
+                    : (language === 'ml' ? 'ഓൺ' : 'Enable')}
                 </Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={[styles.timePickerToggleBtn, { backgroundColor: '#fff3e0' }]}
+                onPress={handleTestNotification}
+              >
+                <Text style={[styles.timePickerToggleBtnText, { color: '#e65100' }]}>🧪 {language === 'ml' ? 'ടെസ്റ്റ് (5s)' : 'Test (5s)'}</Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -1610,38 +1654,45 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     fontSize: 13,
   },
-  reminderRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
+  reminderContainer: {
     marginTop: 10,
+  },
+  reminderInfoRow: {
+    marginBottom: 12,
   },
   reminderStatusLabel: {
     fontSize: 14,
-    color: '#333',
+    fontWeight: '700',
+    color: '#004d40',
     marginBottom: 4,
   },
   reminderTimeText: {
     fontSize: 13,
-    color: '#666',
+    color: '#546e7a',
   },
-  reminderActions: {
+  reminderActionsRow: {
     flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 10,
   },
   timePickerToggleBtn: {
+    flex: 1,
     backgroundColor: '#e0f7fa',
-    paddingVertical: 8,
+    paddingVertical: 9,
     paddingHorizontal: 12,
     borderRadius: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   timePickerToggleBtnText: {
     color: '#006064',
     fontSize: 12,
-    fontWeight: '600',
+    fontWeight: '700',
   },
   reminderToggleBtn: {
-    paddingVertical: 8,
+    flex: 1,
+    paddingVertical: 9,
     paddingHorizontal: 12,
     borderRadius: 8,
     alignItems: 'center',
@@ -1655,7 +1706,7 @@ const styles = StyleSheet.create({
   },
   reminderToggleBtnText: {
     fontSize: 12,
-    fontWeight: '600',
+    fontWeight: '700',
     color: '#333',
   },
 });

@@ -287,7 +287,7 @@ export default function Dashboard({ crops, workLogs, pesticideLogs, onSelectCrop
 
         {/* Operations List Header */}
         <View style={styles.cropListHeaderContainer}>
-          <Text style={styles.cropListTitle}>
+          <Text style={styles.cropListTitle} numberOfLines={1}>
             {language === 'ml' ? 'വിളവുകളുടെ വിവരങ്ങൾ' : 'My Crop Cycles'}
           </Text>
           <TouchableOpacity style={styles.quickAddBtn} onPress={openAddModal}>
@@ -368,29 +368,6 @@ export default function Dashboard({ crops, workLogs, pesticideLogs, onSelectCrop
                 </TouchableOpacity>
               );
             })
-          )}
-        </View>
-
-        {/* Spending by Activity Chart */}
-        <View style={styles.sectionHeaderContainer}>
-          <Text style={styles.sectionTitle}>{t.spendingByActivity}</Text>
-          <Text style={styles.sectionSub}>{t.comparingCosts}</Text>
-        </View>
-
-        <View style={styles.chartCard}>
-          {activityCosts.length === 0 ? (
-            <Text style={styles.emptyListText}>{t.noActivitiesLogged}</Text>
-          ) : (
-            activityCosts.map(act => (
-              <View key={act.name} style={styles.chartRow}>
-                <Text style={styles.chartLabel} numberOfLines={1}>{translateActivity(act.name, language)}</Text>
-                <View style={styles.chartBarWrapper}>
-                  <View style={[styles.chartBar, { width: `${(act.cost / maxActivityCost) * 100}%` }]}>
-                    <Text style={styles.chartBarValue}>₹{act.cost.toFixed(0)}</Text>
-                  </View>
-                </View>
-              </View>
-            ))
           )}
         </View>
 
@@ -619,12 +596,15 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: '800',
     color: '#1b3a1e',
+    flex: 1,
+    marginRight: 8,
   },
   quickAddBtn: {
     backgroundColor: '#1b3a1e',
     paddingHorizontal: 12,
     paddingVertical: 8,
     borderRadius: 8,
+    flexShrink: 0,
   },
   quickAddBtnText: {
     color: '#fff',
@@ -750,30 +730,38 @@ const styles = StyleSheet.create({
     marginVertical: 6,
   },
   chartLabel: {
-    width: 95,
+    width: 120,
     fontSize: 11,
     fontWeight: '600',
     color: '#1b3a1e',
   },
   chartBarWrapper: {
     flex: 1,
-    height: 20,
+    height: 22,
     backgroundColor: '#f1f5f1',
-    borderRadius: 10,
+    borderRadius: 11,
     overflow: 'hidden',
+    flexDirection: 'row',
+    alignItems: 'center',
   },
   chartBar: {
     height: '100%',
     backgroundColor: '#4caf50',
-    borderRadius: 10,
+    borderRadius: 11,
     justifyContent: 'center',
     alignItems: 'flex-end',
-    paddingRight: 8,
+    paddingRight: 6,
   },
-  chartBarValue: {
-    color: '#fff',
-    fontSize: 9,
+  chartBarValueInside: {
+    color: '#ffffff',
+    fontSize: 10,
     fontWeight: '700',
+  },
+  chartBarValueOutside: {
+    color: '#2e7d32',
+    fontSize: 10,
+    fontWeight: '700',
+    paddingLeft: 6,
   },
   financialRow: {
     flexDirection: 'row',

@@ -23,6 +23,8 @@ export interface Crop {
   stageCountArchived?: number;
   fishCount?: number;
   syncCode?: string;
+  feedReminderEnabled?: boolean;
+  feedReminderTime?: string;
 }
 
 export interface WorkLog {

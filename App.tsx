@@ -54,6 +54,7 @@ export default function App() {
   // Cloud Sync States
   const [syncCode, setSyncCodeState] = useState('demofarm');
   const [showSyncModal, setShowSyncModal] = useState(false);
+  const [showMenuModal, setShowMenuModal] = useState(false);
   const [tempSyncCode, setTempSyncCode] = useState('');
   const [isSyncing, setIsSyncing] = useState(false);
 
@@ -89,7 +90,8 @@ export default function App() {
         const savedCode = await getSyncCode();
         setSyncCodeState(savedCode);
 
-        await initializeDatabase(); // Will fill mock data if first load
+        // Fast local database initialization (offline-first)
+        await initializeDatabase();
         
         // Load language preference
         const savedLang = await AsyncStorage.getItem(LANGUAGE_STORAGE_KEY);
@@ -97,6 +99,7 @@ export default function App() {
           setLanguage(savedLang);
         }
 
+        // Render local data immediately
         await refreshAllData();
       } catch (error) {
         console.error('Failed to load data:', error);
@@ -107,23 +110,24 @@ export default function App() {
     loadAppData();
   }, []);
 
-  // Periodic background synchronization check
+  // Periodic background synchronization check (Automatic real-time background sync)
   useEffect(() => {
     if (isLoading) return;
 
-    // Run initial background sync
-    syncPendingQueue()
-      .then(() => fetchAndSyncAllData())
+    // Run initial background sync after UI is rendered
+    fetchAndSyncAllData()
       .then(() => refreshAllData())
-      .catch(err => console.warn('Initial sync failed:', err));
+      .catch(err => console.warn('Initial background sync failed:', err));
 
+    // Auto-sync silently every 12 seconds in the background
     const syncInterval = setInterval(async () => {
       try {
-        await syncPendingQueue();
+        await fetchAndSyncAllData();
+        await refreshAllData();
       } catch (e) {
-        console.warn('Background sync failed:', e);
+        console.warn('Background auto-sync error:', e);
       }
-    }, 30000); // Every 30 seconds
+    }, 12000);
 
     return () => clearInterval(syncInterval);
   }, [isLoading, syncCode]);
@@ -140,14 +144,14 @@ export default function App() {
       await saveSyncCode(trimmed);
       setSyncCodeState(trimmed);
       
-      // Initialize database with new sync code records
-      await initializeDatabase();
+      // Sync all data under new sync code with Firestore
+      await fetchAndSyncAllData();
       await refreshAllData();
       
       setShowSyncModal(false);
       Alert.alert(
         language === 'ml' ? 'വിജയം' : 'Success', 
-        language === 'ml' ? `സിങ്ക് കോഡ് ${trimmed} ലേക്ക് മാറ്റി` : `Sync Code updated to "${trimmed}" successfully!`
+        language === 'ml' ? `സിങ്ക് കോഡ് "${trimmed}" ലേക്ക് മാറ്റി` : `Sync Code updated to "${trimmed}" and synced with cloud!`
       );
     } catch (e) {
       console.error(e);
@@ -833,40 +837,84 @@ export default function App() {
       {/* Language Header Switcher */}
       <View style={styles.langHeader}>
         <Text style={styles.langHeaderTitle}>{t.appName}</Text>
-        <View style={styles.headerRightActions}>
-          <TouchableOpacity
-            style={[styles.pdfExportBtn, { backgroundColor: '#eef2ff', borderColor: '#c7d2fe', marginRight: 5 }]}
-            onPress={() => {
-              setTempSyncCode(syncCode);
-              setShowSyncModal(true);
-            }}
-          >
-            <Text style={[styles.pdfExportBtnText, { color: '#4f46e5' }]}>🔄 Sync</Text>
-          </TouchableOpacity>
+        <TouchableOpacity
+          style={styles.hamburgerBtn}
+          onPress={() => setShowMenuModal(true)}
+          hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+        >
+          <Text style={styles.hamburgerIcon}>☰</Text>
+        </TouchableOpacity>
+      </View>
 
-          <TouchableOpacity
-            style={styles.pdfExportBtn}
-            onPress={handleExportPDF}
-          >
-            <Text style={styles.pdfExportBtnText}>📄 {t.exportPDF}</Text>
-          </TouchableOpacity>
-          
-          <View style={styles.langToggleContainer}>
+      {/* Hamburger Action Menu Modal */}
+      <Modal
+        visible={showMenuModal}
+        animationType="fade"
+        transparent={true}
+        onRequestClose={() => setShowMenuModal(false)}
+      >
+        <TouchableOpacity
+          style={styles.menuModalOverlay}
+          activeOpacity={1}
+          onPress={() => setShowMenuModal(false)}
+        >
+          <View style={styles.menuModalContent} onStartShouldSetResponder={() => true}>
+            <View style={styles.menuModalHeader}>
+              <Text style={styles.menuModalTitle}>{language === 'ml' ? 'മെനു' : 'Menu'}</Text>
+              <TouchableOpacity onPress={() => setShowMenuModal(false)}>
+                <Text style={styles.menuCloseBtnText}>✕</Text>
+              </TouchableOpacity>
+            </View>
+
+            {/* Language Switcher Row */}
+            <View style={styles.menuItemRow}>
+              <View style={styles.langToggleContainer}>
+                <TouchableOpacity
+                  style={[styles.langBtn, language === 'en' && styles.langBtnActive]}
+                  onPress={() => handleLanguageToggle('en')}
+                >
+                  <Text style={[styles.langBtnText, language === 'en' && styles.langBtnTextActive]}>English</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.langBtn, language === 'ml' && styles.langBtnActive]}
+                  onPress={() => handleLanguageToggle('ml')}
+                >
+                  <Text style={[styles.langBtnText, language === 'ml' && styles.langBtnTextActive]}>മലയാളം</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+
+            {/* Sync Settings Menu Option */}
             <TouchableOpacity
-              style={[styles.langBtn, language === 'en' && styles.langBtnActive]}
-              onPress={() => handleLanguageToggle('en')}
+              style={styles.menuOptionBtn}
+              onPress={() => {
+                setShowMenuModal(false);
+                setTempSyncCode(syncCode);
+                setShowSyncModal(true);
+              }}
             >
-              <Text style={[styles.langBtnText, language === 'en' && styles.langBtnTextActive]}>EN</Text>
+              <Text style={styles.menuOptionIcon}>🔄</Text>
+              <Text style={styles.menuOptionText}>
+                {language === 'ml' ? 'ക്ലൗഡ് സിങ്ക് സജ്ജീകരണങ്ങൾ' : 'Cloud Sync Settings'}
+              </Text>
             </TouchableOpacity>
+
+            {/* Export PDF Menu Option */}
             <TouchableOpacity
-              style={[styles.langBtn, language === 'ml' && styles.langBtnActive]}
-              onPress={() => handleLanguageToggle('ml')}
+              style={styles.menuOptionBtn}
+              onPress={() => {
+                setShowMenuModal(false);
+                handleExportPDF();
+              }}
             >
-              <Text style={[styles.langBtnText, language === 'ml' && styles.langBtnTextActive]}>മലയാളം</Text>
+              <Text style={styles.menuOptionIcon}>📄</Text>
+              <Text style={styles.menuOptionText}>
+                {t.exportPDF}
+              </Text>
             </TouchableOpacity>
           </View>
-        </View>
-      </View>
+        </TouchableOpacity>
+      </Modal>
 
       {/* Cloud Sync Settings Modal */}
       <Modal
@@ -1013,21 +1061,28 @@ const styles = StyleSheet.create({
   langToggleContainer: {
     flexDirection: 'row',
     backgroundColor: '#f1f5f1',
-    borderRadius: 15,
-    padding: 2,
+    borderRadius: 14,
+    padding: 3,
+    width: '100%',
+    justifyContent: 'space-between',
+    alignItems: 'center',
   },
   langBtn: {
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 13,
+    flex: 1,
+    paddingVertical: 7,
+    paddingHorizontal: 4,
+    borderRadius: 11,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   langBtnActive: {
     backgroundColor: '#1b3a1e',
   },
   langBtnText: {
-    fontSize: 11,
+    fontSize: 12,
     fontWeight: '600',
     color: '#6e8070',
+    textAlign: 'center',
   },
   langBtnTextActive: {
     color: '#ffffff',
@@ -1048,9 +1103,92 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '600',
   },
+  hamburgerBtn: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 8,
+    backgroundColor: '#f1f5f1',
+    borderWidth: 1,
+    borderColor: '#cbd5e1',
+  },
+  hamburgerIcon: {
+    fontSize: 20,
+    color: '#1b3a1e',
+    fontWeight: '800',
+  },
+  menuModalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.4)',
+    justifyContent: 'flex-start',
+    alignItems: 'flex-end',
+    paddingTop: Platform.OS === 'android' ? (RNStatusBar.currentHeight || 24) + 40 : 60,
+    paddingRight: 16,
+  },
+  menuModalContent: {
+    width: 245,
+    backgroundColor: '#ffffff',
+    borderRadius: 16,
+    padding: 16,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.2,
+    shadowRadius: 8,
+    elevation: 10,
+  },
+  menuModalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 14,
+    paddingBottom: 8,
+    borderBottomWidth: 1,
+    borderBottomColor: '#f1f5f1',
+  },
+  menuModalTitle: {
+    fontSize: 16,
+    fontWeight: '800',
+    color: '#1b3a1e',
+  },
+  menuCloseBtnText: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#94a3b8',
+  },
+  menuItemRow: {
+    marginBottom: 14,
+    paddingBottom: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: '#f8faf8',
+  },
+  menuItemLabel: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#334155',
+    marginRight: 6,
+  },
+  menuOptionBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 10,
+    paddingHorizontal: 8,
+    borderRadius: 8,
+    marginBottom: 6,
+    backgroundColor: '#f8faf8',
+  },
+  menuOptionIcon: {
+    fontSize: 16,
+    marginRight: 10,
+  },
+  menuOptionText: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#1b3a1e',
+  },
   tabBar: {
     flexDirection: 'row',
-    height: 65,
+    minHeight: 70,
+    paddingBottom: Platform.OS === 'android' ? 14 : 8,
+    paddingTop: 4,
     backgroundColor: '#ffffff',
     borderTopWidth: 0.5,
     borderTopColor: '#e2e8e2',

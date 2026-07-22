@@ -116,6 +116,12 @@ export default function CustomDatePicker({ value, onChange, language, placeholde
     });
   }
 
+  // Split cells into 6 explicit rows of 7 columns each
+  const rows = [];
+  for (let i = 0; i < cells.length; i += 7) {
+    rows.push(cells.slice(i, i + 7));
+  }
+
   const monthsList = language === 'ml' ? MONTHS_ML : MONTHS_EN;
   const daysList = language === 'ml' ? DAYS_ML : DAYS_EN;
 
@@ -178,48 +184,58 @@ export default function CustomDatePicker({ value, onChange, language, placeholde
             {/* Weekday Names Row */}
             <View style={styles.weekdaysRow}>
               {daysList.map((day, idx) => (
-                <Text key={idx} style={styles.weekdayText}>{day}</Text>
+                <View key={idx} style={styles.weekdayCell}>
+                  <Text style={styles.weekdayText}>{day}</Text>
+                </View>
               ))}
             </View>
 
-            {/* Days Grid */}
-            <View style={styles.daysGrid}>
-              {cells.map((cell, idx) => {
-                const isSelected = 
-                  value && 
-                  /^\d{4}-\d{2}-\d{2}$/.test(value) && 
-                  (() => {
-                    const parts = value.split('-').map(Number);
-                    return parts[0] === cell.year && parts[1] === (cell.month + 1) && parts[2] === cell.day;
-                  })();
+            {/* Days Grid - Explicit 6 rows of 7 cells */}
+            <View style={styles.daysGridContainer}>
+              {rows.map((rowCells, rIdx) => (
+                <View key={rIdx} style={styles.gridRow}>
+                  {rowCells.map((cell, cIdx) => {
+                    const isSelected = 
+                      value && 
+                      (() => {
+                        const datePart = value.split('T')[0];
+                        if (/^\d{4}-\d{2}-\d{2}$/.test(datePart)) {
+                          const parts = datePart.split('-').map(Number);
+                          return parts[0] === cell.year && parts[1] === (cell.month + 1) && parts[2] === cell.day;
+                        }
+                        return false;
+                      })();
 
-                const isToday = 
-                  today.getFullYear() === cell.year && 
-                  today.getMonth() === cell.month && 
-                  today.getDate() === cell.day;
+                    const isToday = 
+                      today.getFullYear() === cell.year && 
+                      today.getMonth() === cell.month && 
+                      today.getDate() === cell.day;
 
-                return (
-                  <TouchableOpacity
-                    key={idx}
-                    style={[
-                      styles.dayCell,
-                      !cell.isCurrentMonth && styles.dayCellInactive,
-                      isSelected && styles.dayCellSelected,
-                      isToday && !isSelected && styles.dayCellToday,
-                    ]}
-                    onPress={() => selectDay(cell.day, cell.month, cell.year)}
-                  >
-                    <Text style={[
-                      styles.dayText,
-                      !cell.isCurrentMonth && styles.dayTextInactive,
-                      isSelected && styles.dayTextSelected,
-                      isToday && !isSelected && styles.dayTextToday,
-                    ]}>
-                      {cell.day}
-                    </Text>
-                  </TouchableOpacity>
-                );
-              })}
+                    return (
+                      <View key={cIdx} style={styles.dayCellWrapper}>
+                        <TouchableOpacity
+                          style={[
+                            styles.dayCellInner,
+                            !cell.isCurrentMonth && styles.dayCellInactive,
+                            isSelected && styles.dayCellSelected,
+                            isToday && !isSelected && styles.dayCellToday,
+                          ]}
+                          onPress={() => selectDay(cell.day, cell.month, cell.year)}
+                        >
+                          <Text style={[
+                            styles.dayText,
+                            !cell.isCurrentMonth && styles.dayTextInactive,
+                            isSelected && styles.dayTextSelected,
+                            isToday && !isSelected && styles.dayTextToday,
+                          ]}>
+                            {cell.day}
+                          </Text>
+                        </TouchableOpacity>
+                      </View>
+                    );
+                  })}
+                </View>
+              ))}
             </View>
 
             {/* Modal Bottom Actions */}
@@ -308,31 +324,42 @@ const styles = StyleSheet.create({
   },
   weekdaysRow: {
     flexDirection: 'row',
-    justifyContent: 'space-around',
+    width: '100%',
     marginBottom: 8,
     borderBottomWidth: 0.5,
     borderBottomColor: '#eee',
     paddingBottom: 6,
   },
+  weekdayCell: {
+    width: '14.2857%',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   weekdayText: {
-    width: 38,
-    textAlign: 'center',
     fontSize: 12,
-    fontWeight: '600',
-    color: '#888',
+    fontWeight: '700',
+    color: '#6e8070',
+    textAlign: 'center',
   },
-  daysGrid: {
+  daysGridContainer: {
+    width: '100%',
+  },
+  gridRow: {
     flexDirection: 'row',
-    flexWrap: 'wrap',
-    justifyContent: 'space-around',
+    width: '100%',
   },
-  dayCell: {
-    width: 38,
+  dayCellWrapper: {
+    flex: 1,
     height: 38,
     justifyContent: 'center',
     alignItems: 'center',
-    marginVertical: 2,
-    borderRadius: 19,
+  },
+  dayCellInner: {
+    width: 32,
+    height: 32,
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderRadius: 16,
   },
   dayCellInactive: {
     opacity: 0.35,

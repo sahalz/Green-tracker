@@ -25,3 +25,8 @@ export async function cancelFishFeedingNotification(): Promise<void> {
   // No-op on web
 }
 
+// Test fish feeding notification (no-op on web)
+export async function testFishFeedingNotification(): Promise<boolean> {
+  return false;
+}
+

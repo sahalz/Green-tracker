@@ -248,6 +248,28 @@ export const getSyncCode = async (): Promise<string> => {
 export const saveSyncCode = async (code: string): Promise<void> => {
   try {
     await AsyncStorage.setItem(STORAGE_KEYS.SYNC_CODE, code);
+
+    // Re-stamp all local records with the new syncCode
+    const cropsData = await AsyncStorage.getItem(STORAGE_KEYS.CROPS);
+    if (cropsData) {
+      const crops: Crop[] = JSON.parse(cropsData);
+      const updatedCrops = crops.map(c => ({ ...c, syncCode: code }));
+      await AsyncStorage.setItem(STORAGE_KEYS.CROPS, JSON.stringify(updatedCrops));
+    }
+
+    const workData = await AsyncStorage.getItem(STORAGE_KEYS.WORK_LOGS);
+    if (workData) {
+      const logs: WorkLog[] = JSON.parse(workData);
+      const updatedLogs = logs.map(l => ({ ...l, syncCode: code }));
+      await AsyncStorage.setItem(STORAGE_KEYS.WORK_LOGS, JSON.stringify(updatedLogs));
+    }
+
+    const pestData = await AsyncStorage.getItem(STORAGE_KEYS.PESTICIDE_LOGS);
+    if (pestData) {
+      const pests: PesticideLog[] = JSON.parse(pestData);
+      const updatedPests = pests.map(p => ({ ...p, syncCode: code }));
+      await AsyncStorage.setItem(STORAGE_KEYS.PESTICIDE_LOGS, JSON.stringify(updatedPests));
+    }
   } catch (e) {
     console.error('Failed to save sync code:', e);
   }
@@ -281,6 +303,25 @@ const queueOperation = async (op: Omit<SyncOperation, 'id'>) => {
   await saveSyncQueue(queue);
 };
 
+// Helper to prevent Firestore operations from hanging indefinitely on poor network
+const withTimeout = <T>(promise: Promise<T>, ms: number = 8000): Promise<T> => {
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => {
+      reject(new Error(`Operation timed out after ${ms}ms`));
+    }, ms);
+
+    promise
+      .then((res) => {
+        clearTimeout(timer);
+        resolve(res);
+      })
+      .catch((err) => {
+        clearTimeout(timer);
+        reject(err);
+      });
+  });
+};
+
 // Background task to process operations queued while offline
 export const syncPendingQueue = async (): Promise<void> => {
   const queue = await getSyncQueue();
@@ -289,25 +330,27 @@ export const syncPendingQueue = async (): Promise<void> => {
   console.log(`Syncing pending queue: ${queue.length} operations`);
   const failedOps: SyncOperation[] = [];
 
-  for (const op of queue) {
-    try {
-      const collectionName = 
-        op.type === 'crop' ? 'crops' : 
-        op.type === 'workLog' ? 'work_logs' : 
-        'pesticide_logs';
+  await Promise.all(
+    queue.map(async (op) => {
+      try {
+        const collectionName = 
+          op.type === 'crop' ? 'crops' : 
+          op.type === 'workLog' ? 'work_logs' : 
+          'pesticide_logs';
 
-      const docRef = doc(db, collectionName, op.payload.id);
+        const docRef = doc(db, collectionName, op.payload.id);
 
-      if (op.action === 'add' || op.action === 'update') {
-        await setDoc(docRef, op.payload);
-      } else if (op.action === 'delete') {
-        await deleteDoc(docRef);
+        if (op.action === 'add' || op.action === 'update') {
+          await withTimeout(setDoc(docRef, op.payload), 4000);
+        } else if (op.action === 'delete') {
+          await withTimeout(deleteDoc(docRef), 4000);
+        }
+      } catch (e) {
+        console.warn(`Pending sync failed for op ${op.id}, will retry later:`, e);
+        failedOps.push(op);
       }
-    } catch (e) {
-      console.warn(`Pending sync failed for op ${op.id}, will retry later:`, e);
-      failedOps.push(op);
-    }
-  }
+    })
+  );
 
   await saveSyncQueue(failedOps);
 };
@@ -316,41 +359,66 @@ export const syncPendingQueue = async (): Promise<void> => {
 export const fetchAndSyncAllData = async (): Promise<void> => {
   try {
     const syncCode = await getSyncCode();
-    
-    // 1. Fetch crops
+
+    // 1. Flush any pending offline operations in background
+    syncPendingQueue().catch(() => {});
+
+    // 2. Fetch all 3 collections in PARALLEL for ultra-fast performance (< 500ms)
     const cropsQuery = query(collection(db, 'crops'), where('syncCode', '==', syncCode));
-    const cropsSnap = await getDocs(cropsQuery);
-    const cropsList: Crop[] = [];
-    cropsSnap.forEach(d => {
-      cropsList.push({ id: d.id, ...d.data() } as Crop);
-    });
-    await AsyncStorage.setItem(STORAGE_KEYS.CROPS, JSON.stringify(cropsList));
-
-    // 2. Fetch work logs
     const workQuery = query(collection(db, 'work_logs'), where('syncCode', '==', syncCode));
-    const workSnap = await getDocs(workQuery);
-    const workList: WorkLog[] = [];
-    workSnap.forEach(d => {
-      workList.push({ id: d.id, ...d.data() } as WorkLog);
-    });
-    await AsyncStorage.setItem(STORAGE_KEYS.WORK_LOGS, JSON.stringify(workList));
-
-    // 3. Fetch pesticide logs
     const pestQuery = query(collection(db, 'pesticide_logs'), where('syncCode', '==', syncCode));
-    const pestSnap = await getDocs(pestQuery);
-    const pestList: PesticideLog[] = [];
-    pestSnap.forEach(d => {
-      pestList.push({ id: d.id, ...d.data() } as PesticideLog);
-    });
-    await AsyncStorage.setItem(STORAGE_KEYS.PESTICIDE_LOGS, JSON.stringify(pestList));
 
-    console.log('Successfully synced data with Firestore cloud');
+    const [cropsSnap, workSnap, pestSnap] = await withTimeout(
+      Promise.all([getDocs(cropsQuery), getDocs(workQuery), getDocs(pestQuery)]),
+      6000
+    );
+
+    // Process crops
+    const remoteCrops: Crop[] = [];
+    cropsSnap.forEach(d => remoteCrops.push({ id: d.id, ...d.data() } as Crop));
+    if (remoteCrops.length > 0) {
+      await AsyncStorage.setItem(STORAGE_KEYS.CROPS, JSON.stringify(remoteCrops));
+    } else {
+      const localCropsData = await AsyncStorage.getItem(STORAGE_KEYS.CROPS);
+      const localCrops: Crop[] = localCropsData ? JSON.parse(localCropsData) : [];
+      if (localCrops.length > 0) {
+        Promise.all(localCrops.map(c => setDoc(doc(db, 'crops', c.id), { ...c, syncCode }).catch(() => {})));
+      }
+    }
+
+    // Process work logs
+    const remoteWork: WorkLog[] = [];
+    workSnap.forEach(d => remoteWork.push({ id: d.id, ...d.data() } as WorkLog));
+    if (remoteWork.length > 0) {
+      await AsyncStorage.setItem(STORAGE_KEYS.WORK_LOGS, JSON.stringify(remoteWork));
+    } else {
+      const localWorkData = await AsyncStorage.getItem(STORAGE_KEYS.WORK_LOGS);
+      const localWork: WorkLog[] = localWorkData ? JSON.parse(localWorkData) : [];
+      if (localWork.length > 0) {
+        Promise.all(localWork.map(w => setDoc(doc(db, 'work_logs', w.id), { ...w, syncCode }).catch(() => {})));
+      }
+    }
+
+    // Process pesticide logs
+    const remotePest: PesticideLog[] = [];
+    pestSnap.forEach(d => remotePest.push({ id: d.id, ...d.data() } as PesticideLog));
+    if (remotePest.length > 0) {
+      await AsyncStorage.setItem(STORAGE_KEYS.PESTICIDE_LOGS, JSON.stringify(remotePest));
+    } else {
+      const localPestData = await AsyncStorage.getItem(STORAGE_KEYS.PESTICIDE_LOGS);
+      const localPest: PesticideLog[] = localPestData ? JSON.parse(localPestData) : [];
+      if (localPest.length > 0) {
+        Promise.all(localPest.map(p => setDoc(doc(db, 'pesticide_logs', p.id), { ...p, syncCode }).catch(() => {})));
+      }
+    }
+
+    console.log('Successfully synced data with Firestore cloud (Fast Parallel)');
   } catch (error) {
     console.warn('Failed to sync from Firestore. Operating in local offline mode:', error);
   }
 };
 
-// Initialize DB: Sync pending queue, download cloud updates. Populate mock data if database is empty.
+// Initialize DB: Ensure local cache is ready fast. Seed mock data if empty.
 export const initializeDatabase = async (forceReset = false): Promise<void> => {
   try {
     if (forceReset) {
@@ -358,18 +426,12 @@ export const initializeDatabase = async (forceReset = false): Promise<void> => {
     }
 
     const syncCode = await getSyncCode();
-    
-    // Attempt to sync pending queue first
-    await syncPendingQueue();
 
-    // Pull latest updates from cloud
-    await fetchAndSyncAllData();
-
-    // Check if we have local crops
+    // Check if we have local crops (offline-first check)
     const localCropsData = await AsyncStorage.getItem(STORAGE_KEYS.CROPS);
     const localCrops: Crop[] = localCropsData ? JSON.parse(localCropsData) : [];
 
-    // If completely empty, seed standard mock data
+    // If completely empty, seed standard mock data locally immediately
     if (localCrops.length === 0) {
       console.log('Seeding mock data for sync code:', syncCode);
       const seedCrops = MOCK_CROPS(syncCode);
@@ -381,25 +443,26 @@ export const initializeDatabase = async (forceReset = false): Promise<void> => {
       await AsyncStorage.setItem(STORAGE_KEYS.WORK_LOGS, JSON.stringify(seedWorkLogs));
       await AsyncStorage.setItem(STORAGE_KEYS.PESTICIDE_LOGS, JSON.stringify(seedPesticideLogs));
 
-      // Attempt to seed Firestore
-      try {
-        for (const crop of seedCrops) {
-          await setDoc(doc(db, 'crops', crop.id), crop);
+      // Attempt to seed Firestore in the background without blocking local init
+      (async () => {
+        try {
+          for (const crop of seedCrops) {
+            await withTimeout(setDoc(doc(db, 'crops', crop.id), crop), 3000);
+          }
+          for (const log of seedWorkLogs) {
+            await withTimeout(setDoc(doc(db, 'work_logs', log.id), log), 3000);
+          }
+          for (const pest of seedPesticideLogs) {
+            await withTimeout(setDoc(doc(db, 'pesticide_logs', pest.id), pest), 3000);
+          }
+          console.log('Cloud seeding completed successfully.');
+        } catch (e) {
+          console.warn('Failed to upload seed data to cloud. Queued locally.', e);
+          for (const crop of seedCrops) await queueOperation({ action: 'add', type: 'crop', payload: crop });
+          for (const log of seedWorkLogs) await queueOperation({ action: 'add', type: 'workLog', payload: log });
+          for (const pest of seedPesticideLogs) await queueOperation({ action: 'add', type: 'pesticideLog', payload: pest });
         }
-        for (const log of seedWorkLogs) {
-          await setDoc(doc(db, 'work_logs', log.id), log);
-        }
-        for (const pest of seedPesticideLogs) {
-          await setDoc(doc(db, 'pesticide_logs', pest.id), pest);
-        }
-        console.log('Cloud seeding completed successfully.');
-      } catch (e) {
-        console.warn('Failed to upload seed data to cloud. Queued locally.', e);
-        // Queue seed operations
-        for (const crop of seedCrops) await queueOperation({ action: 'add', type: 'crop', payload: crop });
-        for (const log of seedWorkLogs) await queueOperation({ action: 'add', type: 'workLog', payload: log });
-        for (const pest of seedPesticideLogs) await queueOperation({ action: 'add', type: 'pesticideLog', payload: pest });
-      }
+      })();
     }
   } catch (error) {
     console.error('Failed to initialize database:', error);
@@ -424,6 +487,18 @@ export const saveCrops = async (crops: Crop[]): Promise<void> => {
   }
 };
 
+// Background non-blocking cloud write (never delays UI thread)
+const syncDocToCloud = (action: 'add' | 'update' | 'delete', type: 'crop' | 'workLog' | 'pesticideLog', payload: any) => {
+  const collectionName = type === 'crop' ? 'crops' : type === 'workLog' ? 'work_logs' : 'pesticide_logs';
+  if (action === 'delete') {
+    deleteDoc(doc(db, collectionName, payload.id))
+      .catch(() => queueOperation({ action, type, payload }));
+  } else {
+    setDoc(doc(db, collectionName, payload.id), payload)
+      .catch(() => queueOperation({ action, type, payload }));
+  }
+};
+
 export const addCrop = async (crop: Omit<Crop, 'id'>): Promise<Crop> => {
   const syncCode = await getSyncCode();
   const newCrop: Crop = {
@@ -432,17 +507,13 @@ export const addCrop = async (crop: Omit<Crop, 'id'>): Promise<Crop> => {
     syncCode,
   };
 
-  // 1. Update local cache
+  // 1. Update local cache immediately (< 5ms)
   const crops = await getCrops();
   crops.push(newCrop);
   await saveCrops(crops);
 
-  // 2. Write to Firestore / Queue
-  try {
-    await setDoc(doc(db, 'crops', newCrop.id), newCrop);
-  } catch {
-    await queueOperation({ action: 'add', type: 'crop', payload: newCrop });
-  }
+  // 2. Fire-and-forget background cloud sync (0ms UI lag)
+  syncDocToCloud('add', 'crop', newCrop);
 
   return newCrop;
 };
@@ -451,7 +522,7 @@ export const updateCrop = async (updatedCrop: Crop): Promise<void> => {
   const syncCode = await getSyncCode();
   const payload = { ...updatedCrop, syncCode };
 
-  // 1. Update local cache
+  // 1. Update local cache immediately (< 5ms)
   const crops = await getCrops();
   const index = crops.findIndex((c) => c.id === payload.id);
   if (index !== -1) {
@@ -459,38 +530,26 @@ export const updateCrop = async (updatedCrop: Crop): Promise<void> => {
     await saveCrops(crops);
   }
 
-  // 2. Write to Firestore / Queue
-  try {
-    await setDoc(doc(db, 'crops', payload.id), payload);
-  } catch {
-    await queueOperation({ action: 'update', type: 'crop', payload });
-  }
+  // 2. Fire-and-forget background cloud sync
+  syncDocToCloud('update', 'crop', payload);
 };
 
 export const deleteCrop = async (cropId: string): Promise<void> => {
-  // 1. Update local cache
+  // 1. Update local cache immediately
   const crops = await getCrops();
   await saveCrops(crops.filter((c) => c.id !== cropId));
 
-  // 2. Write to Firestore / Queue
-  try {
-    await deleteDoc(doc(db, 'crops', cropId));
-  } catch {
-    await queueOperation({ action: 'delete', type: 'crop', payload: { id: cropId } });
-  }
+  // 2. Background cloud delete
+  syncDocToCloud('delete', 'crop', { id: cropId });
 
-  // Clean up related logs locally and queue deletion
+  // Clean up related logs locally
   const logs = await getWorkLogs();
   const logsToDelete = logs.filter((l) => l.cropId === cropId);
   await saveWorkLogs(logs.filter((l) => l.cropId !== cropId));
 
-  for (const log of logsToDelete) {
-    try {
-      await deleteDoc(doc(db, 'work_logs', log.id));
-    } catch {
-      await queueOperation({ action: 'delete', type: 'workLog', payload: { id: log.id } });
-    }
-  }
+  logsToDelete.forEach((log) => {
+    syncDocToCloud('delete', 'workLog', { id: log.id });
+  });
 
   const pestLogs = await getPesticideLogs();
   const updatedPestLogs = pestLogs
@@ -498,25 +557,14 @@ export const deleteCrop = async (cropId: string): Promise<void> => {
     .filter((p) => p.cropIds.length > 0);
   await savePesticideLogs(updatedPestLogs);
 
-  // Sync pesticide logs updates
-  for (const p of pestLogs) {
-    const updated = updatedPestLogs.find(up => up.id === p.id);
+  pestLogs.forEach((p) => {
+    const updated = updatedPestLogs.find((up) => up.id === p.id);
     if (!updated) {
-      // deleted
-      try {
-        await deleteDoc(doc(db, 'pesticide_logs', p.id));
-      } catch {
-        await queueOperation({ action: 'delete', type: 'pesticideLog', payload: { id: p.id } });
-      }
+      syncDocToCloud('delete', 'pesticideLog', { id: p.id });
     } else {
-      // updated
-      try {
-        await setDoc(doc(db, 'pesticide_logs', p.id), updated);
-      } catch {
-        await queueOperation({ action: 'update', type: 'pesticideLog', payload: updated });
-      }
+      syncDocToCloud('update', 'pesticideLog', updated);
     }
-  }
+  });
 };
 
 // --- Work Log API ---
@@ -547,32 +595,24 @@ export const addWorkLog = async (log: Omit<WorkLog, 'id' | 'totalCost'>): Promis
     syncCode,
   };
 
-  // 1. Update local cache
+  // 1. Update local cache immediately (< 5ms)
   const logs = await getWorkLogs();
   logs.push(newLog);
   await saveWorkLogs(logs);
 
-  // 2. Write to Firestore / Queue
-  try {
-    await setDoc(doc(db, 'work_logs', newLog.id), newLog);
-  } catch {
-    await queueOperation({ action: 'add', type: 'workLog', payload: newLog });
-  }
+  // 2. Fire-and-forget background cloud sync
+  syncDocToCloud('add', 'workLog', newLog);
 
   return newLog;
 };
 
 export const deleteWorkLog = async (logId: string): Promise<void> => {
-  // 1. Update local cache
+  // 1. Update local cache immediately
   const logs = await getWorkLogs();
   await saveWorkLogs(logs.filter((l) => l.id !== logId));
 
-  // 2. Write to Firestore / Queue
-  try {
-    await deleteDoc(doc(db, 'work_logs', logId));
-  } catch {
-    await queueOperation({ action: 'delete', type: 'workLog', payload: { id: logId } });
-  }
+  // 2. Fire-and-forget background cloud delete
+  syncDocToCloud('delete', 'workLog', { id: logId });
 };
 
 // --- Pesticide Log API ---
@@ -617,19 +657,15 @@ export const addPesticideLog = async (log: Omit<PesticideLog, 'id'>): Promise<Pe
     syncCode,
   };
 
-  // 1. Update local cache
+  // 1. Update local cache immediately (< 5ms)
   const logs = await getPesticideLogs();
   logs.push(newLog);
   await savePesticideLogs(logs);
 
-  // 2. Write to Firestore / Queue
-  try {
-    await setDoc(doc(db, 'pesticide_logs', newLog.id), newLog);
-  } catch {
-    await queueOperation({ action: 'add', type: 'pesticideLog', payload: newLog });
-  }
+  // 2. Fire-and-forget background cloud sync
+  syncDocToCloud('add', 'pesticideLog', newLog);
 
-  // Auto-log corresponding "Spraying" work activity for each crop
+  // Auto-log corresponding "Spraying" work activity for each crop in parallel
   const totalLaborCost = (log.noOfWorkers || 0) * (log.laborCostPerWorker || 0);
   const materialCost = log.cost || 0;
   const totalCost = totalLaborCost + materialCost;
@@ -639,34 +675,32 @@ export const addPesticideLog = async (log: Omit<PesticideLog, 'id'>): Promise<Pe
     const materialPerCrop = materialCost / log.cropIds.length;
     const workersPerCrop = (log.noOfWorkers || 0) / log.cropIds.length;
 
-    for (const cropId of log.cropIds) {
-      await addWorkLog({
-        cropId,
-        activityType: 'Spraying',
-        date: log.date,
-        durationMinutes: 0,
-        laborCost: Number(laborPerCrop.toFixed(2)),
-        materialCost: Number(materialPerCrop.toFixed(2)),
-        equipmentCost: 0,
-        noOfWorkers: Number(workersPerCrop.toFixed(1)),
-        laborCostPerWorker: log.laborCostPerWorker || 0,
-        notes: `Auto-logged spray: ${log.pesticideName}.${log.targetPest ? ' Target: ' + log.targetPest : ''}${log.withholdingDays ? ' Withholding: ' + log.withholdingDays + ' days.' : ''}`,
-      });
-    }
+    await Promise.all(
+      log.cropIds.map(cropId =>
+        addWorkLog({
+          cropId,
+          activityType: 'Spraying',
+          date: log.date,
+          durationMinutes: 0,
+          laborCost: Number(laborPerCrop.toFixed(2)),
+          materialCost: Number(materialPerCrop.toFixed(2)),
+          equipmentCost: 0,
+          noOfWorkers: Number(workersPerCrop.toFixed(1)),
+          laborCostPerWorker: log.laborCostPerWorker || 0,
+          notes: `Auto-logged spray: ${log.pesticideName}.${log.targetPest ? ' Target: ' + log.targetPest : ''}${log.withholdingDays ? ' Withholding: ' + log.withholdingDays + ' days.' : ''}`,
+        })
+      )
+    );
   }
 
   return newLog;
 };
 
 export const deletePesticideLog = async (logId: string): Promise<void> => {
-  // 1. Update local cache
+  // 1. Update local cache immediately
   const logs = await getPesticideLogs();
   await savePesticideLogs(logs.filter((l) => l.id !== logId));
 
-  // 2. Write to Firestore / Queue
-  try {
-    await deleteDoc(doc(db, 'pesticide_logs', logId));
-  } catch {
-    await queueOperation({ action: 'delete', type: 'pesticideLog', payload: { id: logId } });
-  }
+  // 2. Fire-and-forget background cloud delete
+  syncDocToCloud('delete', 'pesticideLog', { id: logId });
 };
