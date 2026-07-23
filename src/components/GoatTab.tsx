@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { StyleSheet, Text, View, ScrollView, TouchableOpacity, TextInput, Modal, Alert, Platform, KeyboardAvoidingView } from 'react-native';
 import { Crop, CropStage, WorkLog } from '../types';
 import { Language, TRANSLATIONS, translateStage, translateActivity } from '../translations';
@@ -14,6 +14,83 @@ interface GoatTabProps {
 }
 
 const STAGES: CropStage[] = ['Seedling', 'Vegetative', 'Flowering', 'Fruiting', 'Harvested', 'Archived'];
+
+export const computeAutoStageAndCounts = (crop: Crop, logs: WorkLog[]) => {
+  const cropLogs = logs.filter(l => l.cropId === crop.id);
+  
+  const kidsCount = crop.kidsCount || 0;
+  const malesCount = crop.malesCount || 0;
+  const femalesCount = crop.femalesCount || 0;
+  const totalAdults = malesCount + femalesCount;
+  
+  const breedingLogs = cropLogs.filter(l => l.activityType === 'Breeding');
+  const kiddingLogs = cropLogs.filter(l => l.activityType === 'New Babies' || l.activityType.toLowerCase().includes('baby') || l.activityType.toLowerCase().includes('kidding') || l.activityType.includes('പ്രസവ'));
+  const saleLogs = cropLogs.filter(l => l.activityType === 'Revenue');
+
+  const totalSold = saleLogs.reduce((sum, l) => sum + (l.kidsCount || 0) + (l.malesCount || 0) + (l.femalesCount || 0) + (l.yieldKg || 0), 0);
+  
+  let pregnantCount = crop.stageCountPregnant ?? 0;
+  let lactatingCount = crop.stageCountLactating ?? 0;
+
+  const activeBreedingEvents = Math.max(0, breedingLogs.length - kiddingLogs.length);
+  if (breedingLogs.length > 0) {
+    pregnantCount = Math.min(femalesCount, Math.max(pregnantCount, activeBreedingEvents));
+  }
+  
+  if (kiddingLogs.length > 0) {
+    lactatingCount = Math.min(femalesCount - pregnantCount, Math.max(lactatingCount, kiddingLogs.length));
+  }
+
+  const stageCountKid = kidsCount;
+  const stageCountArchived = (crop.stageCountArchived || 0) > 0 ? crop.stageCountArchived! : totalSold;
+
+  let ageInMonths = 12;
+  if (crop.plantingDate) {
+    const pDate = new Date(crop.plantingDate);
+    const now = new Date();
+    if (!isNaN(pDate.getTime())) {
+      ageInMonths = (now.getFullYear() - pDate.getFullYear()) * 12 + (now.getMonth() - pDate.getMonth());
+    }
+  }
+
+  const remainingAdults = Math.max(0, totalAdults - pregnantCount - lactatingCount);
+  let stageCountGrower = 0;
+  let stageCountBreeder = 0;
+
+  if (ageInMonths < 12) {
+    stageCountGrower = remainingAdults;
+    stageCountBreeder = 0;
+  } else {
+    stageCountBreeder = remainingAdults;
+    stageCountGrower = 0;
+  }
+
+  // Determine dominant active stage
+  let activeStage: CropStage = crop.stage;
+  if (pregnantCount > 0) {
+    activeStage = 'Fruiting'; // Pregnant
+  } else if (lactatingCount > 0) {
+    activeStage = 'Harvested'; // Lactating
+  } else if (stageCountBreeder > 0) {
+    activeStage = 'Flowering'; // Breeding Stock
+  } else if (stageCountGrower > 0) {
+    activeStage = 'Vegetative'; // Grower
+  } else if (stageCountKid > 0) {
+    activeStage = 'Seedling'; // Kid
+  } else if (totalSold > 0 && totalAdults + kidsCount === 0) {
+    activeStage = 'Archived';
+  }
+
+  return {
+    stage: activeStage,
+    stageCountKid,
+    stageCountGrower,
+    stageCountBreeder,
+    stageCountPregnant: pregnantCount,
+    stageCountLactating: lactatingCount,
+    stageCountArchived,
+  };
+};
 
 export default function GoatTab({
   workLogs,
@@ -111,13 +188,39 @@ export default function GoatTab({
 
 
 
+  useEffect(() => {
+    if (!selectedCrop) return;
+    const computed = computeAutoStageAndCounts(selectedCrop, workLogs);
+    
+    const hasDiff = 
+      selectedCrop.stage !== computed.stage ||
+      (selectedCrop.stageCountKid || 0) !== computed.stageCountKid ||
+      (selectedCrop.stageCountGrower || 0) !== computed.stageCountGrower ||
+      (selectedCrop.stageCountBreeder || 0) !== computed.stageCountBreeder ||
+      (selectedCrop.stageCountPregnant || 0) !== computed.stageCountPregnant ||
+      (selectedCrop.stageCountLactating || 0) !== computed.stageCountLactating ||
+      (selectedCrop.stageCountArchived || 0) !== computed.stageCountArchived;
+
+    if (hasDiff) {
+      onUpdateCrop({
+        ...selectedCrop,
+        ...computed,
+      });
+    }
+  }, [selectedCrop?.id, selectedCrop?.malesCount, selectedCrop?.femalesCount, selectedCrop?.kidsCount, workLogs.length]);
+
   const handleAdjustInventorySubmit = async () => {
     if (!selectedCrop) return;
-    const updatedCrop = {
+    const baseCrop = {
       ...selectedCrop,
       malesCount: Number(adjustMales) || 0,
       femalesCount: Number(adjustFemales) || 0,
       kidsCount: Number(adjustKids) || 0,
+    };
+    const computed = computeAutoStageAndCounts(baseCrop, workLogs);
+    const updatedCrop = {
+      ...baseCrop,
+      ...computed,
     };
     await onUpdateCrop(updatedCrop);
     setShowAdjustModal(false);
@@ -240,24 +343,53 @@ export default function GoatTab({
 
     await onAddWorkLog(logData);
 
-    // Update inventory automatically
+    // Update inventory and stages automatically
     if (isGoat) {
       let updatedMales = selectedCrop.malesCount || 0;
       let updatedFemales = selectedCrop.femalesCount || 0;
       let updatedKids = selectedCrop.kidsCount || 0;
+      let updatedPregnant = selectedCrop.stageCountPregnant || 0;
+      let updatedLactating = selectedCrop.stageCountLactating || 0;
 
       if (isBuying) {
         updatedMales += finalMalesCount || 0;
         updatedFemales += finalFemalesCount || 0;
       } else if (isNewBabies) {
-        updatedKids += finalYield || 0;
+        const birthDate = new Date(workDate);
+        const targetDate = new Date(birthDate);
+        targetDate.setMonth(targetDate.getMonth() + 3);
+        const isOlderThan3Months = !isNaN(birthDate.getTime()) && new Date() >= targetDate;
+
+        if (isOlderThan3Months) {
+          updatedMales += finalMalesCount || 0;
+          updatedFemales += finalFemalesCount || 0;
+          (logData as any).kidsConverted = true;
+        } else {
+          updatedKids += finalYield || 0;
+        }
+
+        if (updatedPregnant > 0) {
+          updatedPregnant -= 1;
+        }
+        updatedLactating += 1;
+      } else if (workActivity === 'Breeding') {
+        updatedPregnant += 1;
       }
 
-      await onUpdateCrop({
+      const tempCrop: Crop = {
         ...selectedCrop,
         malesCount: updatedMales,
         femalesCount: updatedFemales,
         kidsCount: updatedKids,
+        stageCountPregnant: updatedPregnant,
+        stageCountLactating: updatedLactating,
+      };
+
+      const computed = computeAutoStageAndCounts(tempCrop, [...workLogs, { ...logData, id: 'temp', totalCost: 0 }]);
+
+      await onUpdateCrop({
+        ...tempCrop,
+        ...computed,
       });
     }
 
@@ -314,16 +446,24 @@ export default function GoatTab({
 
     await onAddWorkLog(logData);
 
-    // Subtract from inventory
+    // Subtract from inventory and update stages
     let updatedMales = Math.max(0, (selectedCrop.malesCount || 0) - malesSold);
     let updatedFemales = Math.max(0, (selectedCrop.femalesCount || 0) - femalesSold);
     let updatedKids = Math.max(0, (selectedCrop.kidsCount || 0) - kidsSold);
 
-    await onUpdateCrop({
+    const tempCrop: Crop = {
       ...selectedCrop,
       malesCount: updatedMales,
       femalesCount: updatedFemales,
       kidsCount: updatedKids,
+      stageCountArchived: (selectedCrop.stageCountArchived || 0) + totalSold,
+    };
+
+    const computed = computeAutoStageAndCounts(tempCrop, [...workLogs, { ...logData, id: 'temp', totalCost: 0 }]);
+
+    await onUpdateCrop({
+      ...tempCrop,
+      ...computed,
     });
 
     setShowEarningsModal(false);

@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { StyleSheet, Text, View, ScrollView, TouchableOpacity, TextInput, Modal, Alert, Platform, KeyboardAvoidingView } from 'react-native';
-import { Crop, CropStage, WorkLog, PesticideLog } from '../types';
+import { Crop, CropStage, WorkLog, PesticideLog, LaborPayment } from '../types';
 import { Language, TRANSLATIONS, translateStage, translateActivity } from '../translations';
 import CustomDatePicker from './CustomDatePicker';
 
@@ -8,6 +8,7 @@ interface CropsTabProps {
   crops: Crop[];
   workLogs: WorkLog[];
   pesticideLogs: PesticideLog[];
+  laborPayments?: LaborPayment[];
   onAddCrop: (crop: Omit<Crop, 'id'>) => Promise<any>;
   onUpdateCrop: (crop: Crop) => Promise<any>;
   onDeleteCrop: (id: string) => Promise<any>;
@@ -17,6 +18,8 @@ interface CropsTabProps {
   onDeleteWorkLog: (id: string) => Promise<any>;
   onAddPesticideLog: (log: Omit<PesticideLog, 'id'>) => Promise<any>;
   onDeletePesticideLog: (id: string) => Promise<any>;
+  onAddLaborPayment?: (payment: Omit<LaborPayment, 'id'>) => Promise<any>;
+  onDeleteLaborPayment?: (id: string) => Promise<any>;
   language: Language;
 }
 
@@ -30,6 +33,7 @@ export default function CropsTab({
   crops,
   workLogs,
   pesticideLogs,
+  laborPayments = [],
   onAddCrop,
   onUpdateCrop,
   onDeleteCrop,
@@ -39,6 +43,8 @@ export default function CropsTab({
   onDeleteWorkLog,
   onAddPesticideLog,
   onDeletePesticideLog,
+  onAddLaborPayment,
+  onDeleteLaborPayment,
   language,
 }: CropsTabProps) {
   const t = TRANSLATIONS[language];
@@ -84,6 +90,14 @@ export default function CropsTab({
   const [sprayWorkers, setSprayWorkers] = useState<string>('');
   const [sprayLaborCostPerWorker, setSprayLaborCostPerWorker] = useState<string>('');
   const [sprayPesticideCost, setSprayPesticideCost] = useState<string>('');
+  const [sprayRequiresReminder, setSprayRequiresReminder] = useState<boolean>(true);
+  // Labor Payment States
+  const [showLaborPayModal, setShowLaborPayModal] = useState(false);
+  const [laborPayAmount, setLaborPayAmount] = useState('');
+  const [laborPayDate, setLaborPayDate] = useState<string>(new Date().toISOString().split('T')[0]);
+  const [laborPayMode, setLaborPayMode] = useState<string>('Cash');
+  const [laborPayNotes, setLaborPayNotes] = useState('');
+  const [showPayHistoryModal, setShowPayHistoryModal] = useState(false);
 
   // Earnings Form States
   const [showEarningsModal, setShowEarningsModal] = useState(false);
@@ -144,6 +158,7 @@ export default function CropsTab({
 
   const cropWorkLogs = workLogs.filter(w => w.cropId === selectedCrop.id);
   const cropPestLogs = pesticideLogs.filter(p => (p.cropIds || []).includes(selectedCrop.id));
+  const cropLaborPayments = (laborPayments || []).filter(p => p.cropId === selectedCrop.id);
 
   const laborCost = cropWorkLogs.reduce((sum, l) => sum + l.laborCost, 0);
   const materialCost = cropWorkLogs.reduce((sum, l) => sum + l.materialCost, 0);
@@ -153,6 +168,9 @@ export default function CropsTab({
   
   const totalRevenue = cropWorkLogs.reduce((sum, l) => sum + (l.income || 0), 0);
   const netProfit = totalRevenue - totalCost;
+
+  const totalLaborPaid = cropLaborPayments.reduce((sum, p) => sum + p.amountPaid, 0);
+  const laborBalanceDue = Math.max(0, laborCost - totalLaborPaid);
 
   // Calculate withholding warning for this crop
   let withholdingDaysLeft = 0;
@@ -197,6 +215,54 @@ export default function CropsTab({
           onPress: async () => {
             await onDeleteCrop(selectedCrop.id);
             onSelectCrop(null);
+          },
+        },
+      ]);
+    }
+  };
+
+  const handleAddLaborPaymentSubmit = async () => {
+    if (!selectedCrop) return;
+    const amount = Number(laborPayAmount);
+    if (!laborPayAmount || isNaN(amount) || amount <= 0) {
+      Alert.alert(
+        language === 'ml' ? 'അപൂർണ്ണമായ വിവരങ്ങൾ' : 'Invalid Amount',
+        language === 'ml' ? 'ദയവായി സാധുവായ ഒരു തുക നൽകുക.' : 'Please enter a valid payment amount.'
+      );
+      return;
+    }
+
+    if (onAddLaborPayment) {
+      await onAddLaborPayment({
+        cropId: selectedCrop.id,
+        date: laborPayDate,
+        amountPaid: amount,
+        paymentMode: laborPayMode,
+        notes: laborPayNotes,
+      });
+    }
+
+    setShowLaborPayModal(false);
+    setLaborPayAmount('');
+    setLaborPayNotes('');
+  };
+
+  const handleDeleteLaborPaymentSubmit = async (id: string) => {
+    const title = language === 'ml' ? 'ഒഴിവാക്കണോ?' : 'Delete Payment';
+    const msg = t.deletePaymentConfirm || (language === 'ml' ? 'ഈ പേയ്‌മെന്റ് വിവരങ്ങൾ ഒഴിവാക്കണോ?' : 'Are you sure you want to delete this payment record?');
+
+    if (Platform.OS === 'web') {
+      if (window.confirm(`${title}\n\n${msg}`)) {
+        if (onDeleteLaborPayment) await onDeleteLaborPayment(id);
+      }
+    } else {
+      Alert.alert(title, msg, [
+        { text: language === 'ml' ? 'വേണ്ട' : 'Cancel', style: 'cancel' },
+        {
+          text: language === 'ml' ? 'ഒഴിവാക്കുക' : 'Delete',
+          style: 'destructive',
+          onPress: async () => {
+            if (onDeleteLaborPayment) await onDeleteLaborPayment(id);
           },
         },
       ]);
@@ -331,6 +397,7 @@ export default function CropsTab({
       cost: pesticideCostNum,
       noOfWorkers: workersNum,
       laborCostPerWorker: costPerWorkerNum,
+      requiresReminder: sprayRequiresReminder,
     };
 
     await onAddPesticideLog(logData);
@@ -348,6 +415,7 @@ export default function CropsTab({
     setSprayWorkers('');
     setSprayLaborCostPerWorker('');
     setSprayPesticideCost('');
+    setSprayRequiresReminder(true);
   };
 
   const handleAddEarningsSubmit = async () => {
@@ -562,6 +630,38 @@ export default function CropsTab({
             {selectedCrop.notes ? (
               <Text style={styles.notesText}>💡 {selectedCrop.notes}</Text>
             ) : null}
+
+            {isCardamom && (
+              <TouchableOpacity
+                style={{
+                  marginTop: 10,
+                  padding: 10,
+                  borderRadius: 8,
+                  backgroundColor: (selectedCrop.sprayReminderEnabled !== false) ? '#e8f5e9' : '#ffebee',
+                  borderWidth: 1,
+                  borderColor: (selectedCrop.sprayReminderEnabled !== false) ? '#a5d6a7' : '#ffcdd2',
+                  flexDirection: 'row',
+                  justifyContent: 'space-between',
+                  alignItems: 'center',
+                }}
+                onPress={async () => {
+                  const current = selectedCrop.sprayReminderEnabled !== false;
+                  await onUpdateCrop({
+                    ...selectedCrop,
+                    sprayReminderEnabled: !current,
+                  });
+                }}
+              >
+                <Text style={{ fontSize: 12, fontWeight: '700', color: (selectedCrop.sprayReminderEnabled !== false) ? '#2e7d32' : '#c62828' }}>
+                  {selectedCrop.sprayReminderEnabled !== false
+                    ? (t.sprayReminderEnabledText || '🔔 Monthly Spray Reminders: Enabled')
+                    : (t.sprayReminderDisabledText || '🔕 Monthly Spray Reminders: Disabled')}
+                </Text>
+                <Text style={{ fontSize: 11, fontWeight: '800', color: (selectedCrop.sprayReminderEnabled !== false) ? '#2e7d32' : '#c62828' }}>
+                  {language === 'ml' ? 'മാറ്റുക' : 'Change'}
+                </Text>
+              </TouchableOpacity>
+            )}
           </View>
         )}
 
@@ -731,6 +831,74 @@ export default function CropsTab({
                   </View>
                 </View>
               )}
+            </View>
+
+            {/* Standalone Labor Payments & Settlement Summary Card */}
+            <View style={styles.laborSettlementCard}>
+              <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+                <Text style={styles.laborSettlementTitle}>
+                  💳 {t.laborSettlementTitle || (language === 'ml' ? 'തൊഴിൽ കൂലി പേയ്‌മെന്റും തീർപ്പാക്കലും' : 'Labor Payments & Settlement')}
+                </Text>
+                <View style={[
+                  styles.statusBadge, 
+                  { backgroundColor: laborCost > 0 && laborBalanceDue === 0 ? '#e8f5e9' : laborBalanceDue > 0 ? '#fff3e0' : '#f5f5f5' }
+                ]}>
+                  <Text style={[
+                    styles.statusBadgeText,
+                    { color: laborCost > 0 && laborBalanceDue === 0 ? '#2e7d32' : laborBalanceDue > 0 ? '#e65100' : '#616161' }
+                  ]}>
+                    {laborCost === 0 
+                      ? (language === 'ml' ? 'കൂലി ചിലവുകളില്ല' : 'No Labor Logged')
+                      : laborBalanceDue === 0 
+                        ? (t.fullySettledBadge || '✓ Fully Settled')
+                        : `${t.pendingBalanceBadge || '⚠️ Balance Due'}: ₹${laborBalanceDue.toLocaleString('en-US')}`
+                    }
+                  </Text>
+                </View>
+              </View>
+
+              <View style={styles.laborRow}>
+                <View style={styles.laborCol}>
+                  <Text style={styles.laborLabel}>{t.totalAccruedLabor || (language === 'ml' ? 'ആകെ കൂലി ചെലവ്' : 'Total Labor Earned')}</Text>
+                  <Text style={styles.laborVal}>₹{laborCost.toLocaleString('en-US', { maximumFractionDigits: 0 })}</Text>
+                </View>
+                <View style={styles.laborCol}>
+                  <Text style={styles.laborLabel}>{t.totalPaidLabor || (language === 'ml' ? 'നൽകിയ കൂലി' : 'Total Paid')}</Text>
+                  <Text style={[styles.laborVal, { color: '#2e7d32' }]}>₹{totalLaborPaid.toLocaleString('en-US', { maximumFractionDigits: 0 })}</Text>
+                </View>
+                <View style={styles.laborCol}>
+                  <Text style={styles.laborLabel}>{t.laborBalanceDue || (language === 'ml' ? 'നൽകാനുള്ള ബാക്കി' : 'Balance Due')}</Text>
+                  <Text style={[styles.laborVal, { color: laborBalanceDue > 0 ? '#d32f2f' : '#2e7d32' }]}>
+                    ₹{laborBalanceDue.toLocaleString('en-US', { maximumFractionDigits: 0 })}
+                  </Text>
+                </View>
+              </View>
+
+              <View style={{ flexDirection: 'row', gap: 10, marginTop: 14 }}>
+                <TouchableOpacity 
+                  style={[styles.recordPayBtn, { flex: 1 }]}
+                  onPress={() => {
+                    setLaborPayAmount(laborBalanceDue > 0 ? String(laborBalanceDue) : '');
+                    setLaborPayDate(new Date().toISOString().split('T')[0]);
+                    setLaborPayMode('Cash');
+                    setLaborPayNotes('');
+                    setShowLaborPayModal(true);
+                  }}
+                >
+                  <Text style={styles.recordPayBtnText}>
+                    💳 {t.recordLaborPayment || (language === 'ml' ? '+ കൂലി നൽകിയത് രേഖപ്പെടുത്തുക' : '+ Record Payment')}
+                  </Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity 
+                  style={[styles.payHistoryBtn, { flex: 1 }]}
+                  onPress={() => setShowPayHistoryModal(true)}
+                >
+                  <Text style={styles.payHistoryBtnText}>
+                    📋 {t.paymentHistory || (language === 'ml' ? 'ചരിത്രം' : 'History')} ({cropLaborPayments.length})
+                  </Text>
+                </TouchableOpacity>
+              </View>
             </View>
 
             {/* Direct Log Actions */}
@@ -1438,6 +1606,43 @@ export default function CropsTab({
                 onChangeText={setSprayPesticideCost} 
               />
 
+              {/* Monthly Spray Reminder Option */}
+              <Text style={styles.inputLabel}>{t.chemicalNeedsReminder || 'Requires Monthly Spray Reminder?'}</Text>
+              <View style={{ flexDirection: 'row', gap: 10, marginBottom: 15 }}>
+                <TouchableOpacity
+                  style={{
+                    flex: 1,
+                    padding: 10,
+                    borderRadius: 8,
+                    backgroundColor: sprayRequiresReminder ? '#1b5e20' : '#f5f5f5',
+                    borderWidth: 1,
+                    borderColor: sprayRequiresReminder ? '#1b5e20' : '#cccccc',
+                    alignItems: 'center',
+                  }}
+                  onPress={() => setSprayRequiresReminder(true)}
+                >
+                  <Text style={{ color: sprayRequiresReminder ? '#ffffff' : '#333333', fontWeight: '700', fontSize: 12 }}>
+                    ✓ {t.reminderYes || 'Yes (Resets Reminder)'}
+                  </Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={{
+                    flex: 1,
+                    padding: 10,
+                    borderRadius: 8,
+                    backgroundColor: !sprayRequiresReminder ? '#b71c1c' : '#f5f5f5',
+                    borderWidth: 1,
+                    borderColor: !sprayRequiresReminder ? '#b71c1c' : '#cccccc',
+                    alignItems: 'center',
+                  }}
+                  onPress={() => setSprayRequiresReminder(false)}
+                >
+                  <Text style={{ color: !sprayRequiresReminder ? '#ffffff' : '#333333', fontWeight: '700', fontSize: 12 }}>
+                    ✕ {t.reminderNo || 'No (Skip Resetting)'}
+                  </Text>
+                </TouchableOpacity>
+              </View>
+
               {/* Auto Calculated Previews */}
               <View style={styles.autoCalcBox}>
                 <Text style={styles.autoCalcLabel}>{t.totalLaborCost}</Text>
@@ -1781,6 +1986,104 @@ export default function CropsTab({
         </KeyboardAvoidingView>
       </Modal>
 
+      {/* Record Labor Payment Modal */}
+      <Modal visible={showLaborPayModal} animationType="slide" transparent={true} onRequestClose={() => setShowLaborPayModal(false)}>
+        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <Text style={styles.modalTitle}>💳 {t.laborPaymentModalTitle || (language === 'ml' ? 'കൂലി നൽകിയ വിവരം രേഖപ്പെടുത്തുക' : 'Record Labor Payment')}</Text>
+
+            <ScrollView style={{ maxHeight: 400 }}>
+              <Text style={styles.inputLabel}>{t.amountPaid || (language === 'ml' ? 'നൽകിയ തുക (₹) *' : 'Amount Paid (₹) *')}</Text>
+              <TextInput 
+                style={styles.input} 
+                keyboardType="numeric" 
+                placeholder="e.g. 1200" 
+                value={laborPayAmount} 
+                onChangeText={setLaborPayAmount} 
+              />
+
+              <Text style={styles.inputLabel}>{t.date}</Text>
+              <CustomDatePicker 
+                value={laborPayDate} 
+                onChange={setLaborPayDate} 
+                language={language} 
+              />
+
+              <Text style={styles.inputLabel}>{t.paymentMode || (language === 'ml' ? 'പേയ്‌മെന്റ് രീതി' : 'Payment Mode')}</Text>
+              <View style={{ flexDirection: 'row', gap: 8, marginBottom: 12, flexWrap: 'wrap' }}>
+                {['Cash', 'UPI', 'Bank Transfer', 'Other'].map(mode => (
+                  <TouchableOpacity
+                    key={mode}
+                    style={[
+                      styles.modeChip,
+                      laborPayMode === mode && styles.modeChipSelected
+                    ]}
+                    onPress={() => setLaborPayMode(mode)}
+                  >
+                    <Text style={[styles.modeChipText, laborPayMode === mode && styles.modeChipTextSelected]}>
+                      {mode}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+
+              <Text style={styles.inputLabel}>{t.notes}</Text>
+              <TextInput 
+                style={[styles.input, styles.textArea]} 
+                multiline={true} 
+                placeholder={language === 'ml' ? 'ഉദാ: 2 തൊഴിലാളികൾക്കുള്ള കൂലി' : 'e.g. Paid to 2 workers'} 
+                value={laborPayNotes} 
+                onChangeText={setLaborPayNotes} 
+              />
+            </ScrollView>
+
+            <View style={styles.modalActions}>
+              <TouchableOpacity style={[styles.modalBtn, styles.cancelBtn]} onPress={() => setShowLaborPayModal(false)}>
+                <Text style={styles.cancelBtnText}>{t.cancel}</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={[styles.modalBtn, styles.saveBtn, { backgroundColor: '#2e7d32' }]} onPress={handleAddLaborPaymentSubmit}>
+                <Text style={styles.saveBtnText}>{t.saveCrop || (language === 'ml' ? 'രേഖപ്പെടുത്തുക' : 'Save Payment')}</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </KeyboardAvoidingView>
+      </Modal>
+
+      {/* Labor Payment History Modal */}
+      <Modal visible={showPayHistoryModal} animationType="slide" transparent={true} onRequestClose={() => setShowPayHistoryModal(false)}>
+        <View style={styles.modalOverlay}>
+          <View style={[styles.modalContent, { maxHeight: '80%' }]}>
+            <Text style={styles.modalTitle}>📋 {t.paymentHistory || (language === 'ml' ? 'പേയ്‌മെന്റ് ചരിത്രം' : 'Payment History')} ({cropLaborPayments.length})</Text>
+
+            <ScrollView style={{ marginTop: 10 }}>
+              {cropLaborPayments.length === 0 ? (
+                <Text style={{ textAlign: 'center', color: '#888', marginVertical: 20 }}>{t.noPaymentsYet || (language === 'ml' ? 'കൂലി പേയ്‌മെന്റുകൾ ഒന്നും രേഖപ്പെടുത്തിയിട്ടില്ല.' : 'No labor payments recorded yet.')}</Text>
+              ) : (
+                cropLaborPayments.map((item) => (
+                  <View key={item.id} style={styles.historyCard}>
+                    <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <View style={{ flex: 1, marginRight: 8 }}>
+                        <Text style={{ fontSize: 16, fontWeight: '800', color: '#2e7d32' }}>₹{item.amountPaid.toLocaleString('en-US')}</Text>
+                        <Text style={{ fontSize: 12, color: '#666', marginTop: 2 }}>📅 {item.date} • {item.paymentMode || 'Cash'}</Text>
+                        {item.notes ? <Text style={{ fontSize: 12, color: '#444', fontStyle: 'italic', marginTop: 4 }}>💡 {item.notes}</Text> : null}
+                      </View>
+                      <TouchableOpacity onPress={() => handleDeleteLaborPaymentSubmit(item.id)}>
+                        <Text style={{ fontSize: 18, padding: 6 }}>🗑️</Text>
+                      </TouchableOpacity>
+                    </View>
+                  </View>
+                ))
+              )}
+            </ScrollView>
+
+            <View style={{ marginTop: 15 }}>
+              <TouchableOpacity style={[styles.modalBtn, styles.cancelBtn, { width: '100%' }]} onPress={() => setShowPayHistoryModal(false)}>
+                <Text style={styles.cancelBtnText}>{language === 'ml' ? 'അടക്കുക' : 'Close'}</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
 
     </View>
   );
@@ -2553,5 +2856,109 @@ const styles = StyleSheet.create({
     fontSize: 11,
     color: '#ff5252',
     fontWeight: '700',
+  },
+  laborSettlementCard: {
+    backgroundColor: '#ffffff',
+    borderRadius: 16,
+    padding: 16,
+    marginBottom: 20,
+    borderWidth: 1,
+    borderColor: '#c8e6c9',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 3,
+    elevation: 1,
+  },
+  laborSettlementTitle: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#1b3a1e',
+  },
+  statusBadge: {
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 12,
+  },
+  statusBadgeText: {
+    fontSize: 11,
+    fontWeight: '700',
+  },
+  laborRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    backgroundColor: '#f9fbf9',
+    borderRadius: 12,
+    padding: 12,
+    marginTop: 4,
+  },
+  laborCol: {
+    flex: 1,
+    alignItems: 'center',
+  },
+  laborLabel: {
+    fontSize: 10,
+    color: '#7f8c8d',
+    fontWeight: '700',
+    marginBottom: 4,
+  },
+  laborVal: {
+    fontSize: 15,
+    fontWeight: '800',
+    color: '#2c3e50',
+  },
+  recordPayBtn: {
+    backgroundColor: '#2e7d32',
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    borderRadius: 8,
+    alignItems: 'center',
+  },
+  recordPayBtnText: {
+    color: '#ffffff',
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  payHistoryBtn: {
+    backgroundColor: '#f0f4f0',
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    borderRadius: 8,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#c8e6c9',
+  },
+  payHistoryBtnText: {
+    color: '#1b3a1e',
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  modeChip: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: '#ccc',
+    backgroundColor: '#fff',
+  },
+  modeChipSelected: {
+    backgroundColor: '#2e7d32',
+    borderColor: '#2e7d32',
+  },
+  modeChipText: {
+    fontSize: 12,
+    color: '#666',
+  },
+  modeChipTextSelected: {
+    color: '#fff',
+    fontWeight: '700',
+  },
+  historyCard: {
+    backgroundColor: '#f9fbf9',
+    borderRadius: 10,
+    padding: 12,
+    marginBottom: 8,
+    borderWidth: 1,
+    borderColor: '#e2e8e2',
   },
 });

@@ -1,29 +1,17 @@
 import { Platform } from 'react-native';
-import Constants, { ExecutionEnvironment } from 'expo-constants';
+import * as Notifications from 'expo-notifications';
 import { Crop, PesticideLog } from './types';
 
-// Check if running inside Expo Go client where expo-notifications module init throws errors in SDK 53+
-const isExpoGo =
-  Constants.executionEnvironment === ExecutionEnvironment.StoreClient ||
-  (Constants as any).appOwnership === 'expo';
-
-// Dynamically acquire Notifications module only on native standalone builds
-let NotificationsModule: typeof import('expo-notifications') | null = null;
-
-if (Platform.OS !== 'web' && !isExpoGo) {
+if (Platform.OS !== 'web') {
   try {
-    NotificationsModule = require('expo-notifications');
-    if (NotificationsModule && NotificationsModule.setNotificationHandler) {
-      NotificationsModule.setNotificationHandler({
-        handleNotification: async () => ({
-          shouldShowAlert: true,
-          shouldPlaySound: true,
-          shouldSetBadge: false,
-          shouldShowBanner: true,
-          shouldShowList: true,
-        } as any),
-      });
-    }
+    Notifications.setNotificationHandler({
+      handleNotification: async () => ({
+        shouldShowBanner: true,
+        shouldShowList: true,
+        shouldPlaySound: true,
+        shouldSetBadge: false,
+      }),
+    });
   } catch (e) {
     console.warn('Skipped expo-notifications initialization:', e);
   }
@@ -31,20 +19,20 @@ if (Platform.OS !== 'web' && !isExpoGo) {
 
 // Request permissions
 export async function requestNotificationPermissions(): Promise<boolean> {
-  if (Platform.OS === 'web' || isExpoGo || !NotificationsModule) return false;
+  if (Platform.OS === 'web') return false;
   try {
     if (Platform.OS === 'android') {
-      await NotificationsModule.setNotificationChannelAsync('default', {
+      await Notifications.setNotificationChannelAsync('default', {
         name: 'Default Notifications',
-        importance: NotificationsModule.AndroidImportance.MAX,
+        importance: Notifications.AndroidImportance.MAX,
         vibrationPattern: [0, 250, 250, 250],
-        lightColor: '#FF231F7C',
+        lightColor: '#16a34a',
       });
     }
-    const { status: existingStatus } = await NotificationsModule.getPermissionsAsync();
+    const { status: existingStatus } = await Notifications.getPermissionsAsync();
     let finalStatus = existingStatus;
     if (existingStatus !== 'granted') {
-      const { status } = await NotificationsModule.requestPermissionsAsync();
+      const { status } = await Notifications.requestPermissionsAsync();
       finalStatus = status;
     }
     return finalStatus === 'granted';
@@ -56,13 +44,13 @@ export async function requestNotificationPermissions(): Promise<boolean> {
 
 // Cancel spraying notifications for a specific crop
 export async function cancelSprayingNotification(cropId: string) {
-  if (Platform.OS === 'web' || isExpoGo || !NotificationsModule) return;
+  if (Platform.OS === 'web') return;
   try {
-    const scheduled = await NotificationsModule.getAllScheduledNotificationsAsync();
+    const scheduled = await Notifications.getAllScheduledNotificationsAsync();
     for (const notif of scheduled) {
       const data = notif.content.data as { cropId?: string } | undefined;
       if (data && data.cropId === cropId) {
-        await NotificationsModule.cancelScheduledNotificationAsync(notif.identifier);
+        await Notifications.cancelScheduledNotificationAsync(notif.identifier);
       }
     }
   } catch (error) {
@@ -72,7 +60,7 @@ export async function cancelSprayingNotification(cropId: string) {
 
 // Sync Cardamom spraying notifications (Consolidated: Max 1 notification per day)
 export async function syncCardamomNotifications(crops: Crop[], pesticideLogs: PesticideLog[]) {
-  if (Platform.OS === 'web' || isExpoGo || !NotificationsModule) return;
+  if (Platform.OS === 'web') return;
 
   try {
     const hasPermission = await requestNotificationPermissions();
@@ -80,12 +68,13 @@ export async function syncCardamomNotifications(crops: Crop[], pesticideLogs: Pe
 
     // Always cancel existing single cardamom notification first to avoid duplicates
     try {
-      await NotificationsModule.cancelScheduledNotificationAsync('cardamom-daily-spray');
+      await Notifications.cancelScheduledNotificationAsync('cardamom-daily-spray');
     } catch {}
 
-    // Filter active cardamom crops
+    // Filter active cardamom crops with reminders enabled
     const cardamomCrops = crops.filter(c => 
       c.stage !== 'Archived' && 
+      c.sprayReminderEnabled !== false &&
       (c.type.toLowerCase().includes('cardamom') || 
        c.type.toLowerCase().includes('cardomom') || 
        c.type.includes('ഏല'))
@@ -99,7 +88,7 @@ export async function syncCardamomNotifications(crops: Crop[], pesticideLogs: Pe
 
     for (const crop of cardamomCrops) {
       const cropSprays = pesticideLogs
-        .filter(p => (p.cropIds || []).includes(crop.id))
+        .filter(p => (p.cropIds || []).includes(crop.id) && p.requiresReminder !== false)
         .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
 
       let baseDate = new Date(crop.plantingDate);
@@ -122,7 +111,7 @@ export async function syncCardamomNotifications(crops: Crop[], pesticideLogs: Pe
         ? `Cardamom plot "${names}" is due for chemical spraying.`
         : `${overdueCrops.length} Cardamom plots (${names}) are due for chemical spraying.`;
 
-      await NotificationsModule.scheduleNotificationAsync({
+      await Notifications.scheduleNotificationAsync({
         identifier: 'cardamom-daily-spray',
         content: {
           title: 'Cardamom Spraying Reminder 🧪',
@@ -131,7 +120,7 @@ export async function syncCardamomNotifications(crops: Crop[], pesticideLogs: Pe
           vibrate: [0, 250, 250, 250],
         },
         trigger: {
-          type: NotificationsModule.SchedulableTriggerInputTypes.DAILY,
+          type: Notifications.SchedulableTriggerInputTypes.DAILY,
           hour: 9,
           minute: 0,
           channelId: 'default',
@@ -146,7 +135,7 @@ export async function syncCardamomNotifications(crops: Crop[], pesticideLogs: Pe
         triggerDate.setHours(9, 0, 0, 0);
 
         if (triggerDate.getTime() > now.getTime()) {
-          await NotificationsModule.scheduleNotificationAsync({
+          await Notifications.scheduleNotificationAsync({
             identifier: 'cardamom-daily-spray',
             content: {
               title: 'Cardamom Spraying Reminder 🧪',
@@ -155,7 +144,7 @@ export async function syncCardamomNotifications(crops: Crop[], pesticideLogs: Pe
               vibrate: [0, 250, 250, 250],
             },
             trigger: {
-              type: NotificationsModule.SchedulableTriggerInputTypes.DATE,
+              type: Notifications.SchedulableTriggerInputTypes.DATE,
               date: triggerDate,
               channelId: 'default',
             } as any,
@@ -170,7 +159,7 @@ export async function syncCardamomNotifications(crops: Crop[], pesticideLogs: Pe
 
 // Schedule daily fish feeding notification
 export async function scheduleDailyFishFeedingNotification(hour: number, minute: number): Promise<boolean> {
-  if (Platform.OS === 'web' || isExpoGo || !NotificationsModule) return false;
+  if (Platform.OS === 'web') return false;
   try {
     const hasPermission = await requestNotificationPermissions();
     if (!hasPermission) return false;
@@ -179,13 +168,13 @@ export async function scheduleDailyFishFeedingNotification(hour: number, minute:
     await cancelFishFeedingNotification();
 
     const triggerInput = {
-      type: NotificationsModule.SchedulableTriggerInputTypes.DAILY,
+      type: Notifications.SchedulableTriggerInputTypes.DAILY,
       hour,
       minute,
       channelId: 'default',
     };
 
-    await NotificationsModule.scheduleNotificationAsync({
+    await Notifications.scheduleNotificationAsync({
       identifier: 'fish-feeding-daily',
       content: {
         title: 'Time to Feed the Fish! 🐟',
@@ -204,9 +193,9 @@ export async function scheduleDailyFishFeedingNotification(hour: number, minute:
 
 // Cancel daily fish feeding notification
 export async function cancelFishFeedingNotification(): Promise<void> {
-  if (Platform.OS === 'web' || isExpoGo || !NotificationsModule) return;
+  if (Platform.OS === 'web') return;
   try {
-    await NotificationsModule.cancelScheduledNotificationAsync('fish-feeding-daily');
+    await Notifications.cancelScheduledNotificationAsync('fish-feeding-daily');
   } catch (error) {
     console.warn('Error cancelling daily fish feeding notification:', error);
   }
@@ -214,12 +203,12 @@ export async function cancelFishFeedingNotification(): Promise<void> {
 
 // Immediate Test Notification (5 seconds delay)
 export async function testFishFeedingNotification(): Promise<boolean> {
-  if (Platform.OS === 'web' || isExpoGo || !NotificationsModule) return false;
+  if (Platform.OS === 'web') return false;
   try {
     const hasPermission = await requestNotificationPermissions();
     if (!hasPermission) return false;
 
-    await NotificationsModule.scheduleNotificationAsync({
+    await Notifications.scheduleNotificationAsync({
       content: {
         title: 'Time to Feed the Fish! 🐟',
         body: 'This is a test alert for your fish feeding schedule.',
@@ -227,7 +216,7 @@ export async function testFishFeedingNotification(): Promise<boolean> {
         vibrate: [0, 250, 250, 250],
       },
       trigger: {
-        type: NotificationsModule.SchedulableTriggerInputTypes.TIME_INTERVAL,
+        type: Notifications.SchedulableTriggerInputTypes.TIME_INTERVAL,
         seconds: 5,
         repeats: false,
         channelId: 'default',
@@ -239,4 +228,5 @@ export async function testFishFeedingNotification(): Promise<boolean> {
     return false;
   }
 }
+
 

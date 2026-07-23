@@ -1,6 +1,6 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { Crop, WorkLog, PesticideLog } from './types';
-import { db } from './firebase';
+import { Crop, WorkLog, PesticideLog, LaborPayment } from './types';
+import { db, ensureAuthenticated } from './firebase';
 import { 
   collection, 
   doc, 
@@ -15,6 +15,7 @@ const STORAGE_KEYS = {
   CROPS: 'crop_monitor_crops_v3',
   WORK_LOGS: 'crop_monitor_work_logs_v3',
   PESTICIDE_LOGS: 'crop_monitor_pesticide_logs_v3',
+  LABOR_PAYMENTS: 'crop_monitor_labor_payments_v3',
   SYNC_CODE: 'crop_monitor_sync_code_v1',
   SYNC_QUEUE: 'crop_monitor_sync_queue_v1',
 };
@@ -22,7 +23,7 @@ const STORAGE_KEYS = {
 interface SyncOperation {
   id: string;
   action: 'add' | 'update' | 'delete';
-  type: 'crop' | 'workLog' | 'pesticideLog';
+  type: 'crop' | 'workLog' | 'pesticideLog' | 'laborPayment';
   payload: any;
 }
 
@@ -249,27 +250,14 @@ export const saveSyncCode = async (code: string): Promise<void> => {
   try {
     await AsyncStorage.setItem(STORAGE_KEYS.SYNC_CODE, code);
 
-    // Re-stamp all local records with the new syncCode
-    const cropsData = await AsyncStorage.getItem(STORAGE_KEYS.CROPS);
-    if (cropsData) {
-      const crops: Crop[] = JSON.parse(cropsData);
-      const updatedCrops = crops.map(c => ({ ...c, syncCode: code }));
-      await AsyncStorage.setItem(STORAGE_KEYS.CROPS, JSON.stringify(updatedCrops));
-    }
+    // Clear local active cache when switching sync codes so we don't pollute the new space
+    await AsyncStorage.removeItem(STORAGE_KEYS.CROPS);
+    await AsyncStorage.removeItem(STORAGE_KEYS.WORK_LOGS);
+    await AsyncStorage.removeItem(STORAGE_KEYS.PESTICIDE_LOGS);
+    await AsyncStorage.removeItem(STORAGE_KEYS.LABOR_PAYMENTS);
 
-    const workData = await AsyncStorage.getItem(STORAGE_KEYS.WORK_LOGS);
-    if (workData) {
-      const logs: WorkLog[] = JSON.parse(workData);
-      const updatedLogs = logs.map(l => ({ ...l, syncCode: code }));
-      await AsyncStorage.setItem(STORAGE_KEYS.WORK_LOGS, JSON.stringify(updatedLogs));
-    }
-
-    const pestData = await AsyncStorage.getItem(STORAGE_KEYS.PESTICIDE_LOGS);
-    if (pestData) {
-      const pests: PesticideLog[] = JSON.parse(pestData);
-      const updatedPests = pests.map(p => ({ ...p, syncCode: code }));
-      await AsyncStorage.setItem(STORAGE_KEYS.PESTICIDE_LOGS, JSON.stringify(updatedPests));
-    }
+    // Fetch cloud records for the new sync code or initialize database
+    await fetchAndSyncAllData();
   } catch (e) {
     console.error('Failed to save sync code:', e);
   }
@@ -336,7 +324,8 @@ export const syncPendingQueue = async (): Promise<void> => {
         const collectionName = 
           op.type === 'crop' ? 'crops' : 
           op.type === 'workLog' ? 'work_logs' : 
-          'pesticide_logs';
+          op.type === 'pesticideLog' ? 'pesticide_logs' :
+          'labor_payments';
 
         const docRef = doc(db, collectionName, op.payload.id);
 
@@ -347,7 +336,7 @@ export const syncPendingQueue = async (): Promise<void> => {
         }
       } catch (e) {
         console.warn(`Pending sync failed for op ${op.id}, will retry later:`, e);
-        failedOps.push(op);
+failedOps.push(op);
       }
     })
   );
@@ -355,29 +344,73 @@ export const syncPendingQueue = async (): Promise<void> => {
   await saveSyncQueue(failedOps);
 };
 
+// Background cloud write with offline fallback
+const syncDocToCloud = async (action: 'add' | 'update' | 'delete', type: 'crop' | 'workLog' | 'pesticideLog' | 'laborPayment', payload: any): Promise<void> => {
+  await ensureAuthenticated();
+  const collectionName = 
+    type === 'crop' ? 'crops' : 
+    type === 'workLog' ? 'work_logs' : 
+    type === 'pesticideLog' ? 'pesticide_logs' : 
+    'labor_payments';
+  try {
+    if (action === 'delete') {
+      await withTimeout(deleteDoc(doc(db, collectionName, payload.id)), 4000);
+      console.log(`Successfully deleted ${type} ${payload.id} in Firestore`);
+    } else {
+      await withTimeout(setDoc(doc(db, collectionName, payload.id), payload), 4000);
+      console.log(`Successfully set ${type} ${payload.id} in Firestore`);
+    }
+  } catch (err) {
+    console.warn(`Cloud sync failed for ${type} ${payload.id}, queuing offline:`, err);
+    await queueOperation({ action, type, payload });
+  }
+};
+
 // --- Remote Cloud Sync down to Local Cache ---
 export const fetchAndSyncAllData = async (): Promise<void> => {
   try {
+    await ensureAuthenticated();
     const syncCode = await getSyncCode();
 
-    // 1. Flush any pending offline operations in background
-    syncPendingQueue().catch(() => {});
+    // 1. Flush any pending offline operations FIRST before fetching
+    await syncPendingQueue().catch(() => {});
 
-    // 2. Fetch all 3 collections in PARALLEL for ultra-fast performance (< 500ms)
+    // 2. Fetch all collections in PARALLEL for ultra-fast performance (< 500ms)
     const cropsQuery = query(collection(db, 'crops'), where('syncCode', '==', syncCode));
     const workQuery = query(collection(db, 'work_logs'), where('syncCode', '==', syncCode));
     const pestQuery = query(collection(db, 'pesticide_logs'), where('syncCode', '==', syncCode));
+    const laborPayQuery = query(collection(db, 'labor_payments'), where('syncCode', '==', syncCode));
 
-    const [cropsSnap, workSnap, pestSnap] = await withTimeout(
-      Promise.all([getDocs(cropsQuery), getDocs(workQuery), getDocs(pestQuery)]),
+    const [cropsSnap, workSnap, pestSnap, laborPaySnap] = await withTimeout(
+      Promise.all([getDocs(cropsQuery), getDocs(workQuery), getDocs(pestQuery), getDocs(laborPayQuery)]),
       6000
     );
+
+    const remainingQueue = await getSyncQueue();
+    const pendingCropIds = new Set(remainingQueue.filter(op => op.type === 'crop').map(op => op.payload.id));
 
     // Process crops
     const remoteCrops: Crop[] = [];
     cropsSnap.forEach(d => remoteCrops.push({ id: d.id, ...d.data() } as Crop));
     if (remoteCrops.length > 0) {
-      await AsyncStorage.setItem(STORAGE_KEYS.CROPS, JSON.stringify(remoteCrops));
+      const localCropsData = await AsyncStorage.getItem(STORAGE_KEYS.CROPS);
+      const localCrops: Crop[] = localCropsData ? JSON.parse(localCropsData) : [];
+      
+      const mergedCrops = remoteCrops.map(remote => {
+        if (pendingCropIds.has(remote.id)) {
+          const local = localCrops.find(l => l.id === remote.id);
+          return local || remote;
+        }
+        return remote;
+      });
+
+      localCrops.forEach(l => {
+        if (pendingCropIds.has(l.id) && !mergedCrops.some(m => m.id === l.id)) {
+          mergedCrops.push(l);
+        }
+      });
+
+      await AsyncStorage.setItem(STORAGE_KEYS.CROPS, JSON.stringify(mergedCrops));
     } else {
       const localCropsData = await AsyncStorage.getItem(STORAGE_KEYS.CROPS);
       const localCrops: Crop[] = localCropsData ? JSON.parse(localCropsData) : [];
@@ -409,6 +442,19 @@ export const fetchAndSyncAllData = async (): Promise<void> => {
       const localPest: PesticideLog[] = localPestData ? JSON.parse(localPestData) : [];
       if (localPest.length > 0) {
         Promise.all(localPest.map(p => setDoc(doc(db, 'pesticide_logs', p.id), { ...p, syncCode }).catch(() => {})));
+      }
+    }
+
+    // Process labor payments
+    const remoteLaborPay: LaborPayment[] = [];
+    laborPaySnap.forEach(d => remoteLaborPay.push({ id: d.id, ...d.data() } as LaborPayment));
+    if (remoteLaborPay.length > 0) {
+      await AsyncStorage.setItem(STORAGE_KEYS.LABOR_PAYMENTS, JSON.stringify(remoteLaborPay));
+    } else {
+      const localLaborPayData = await AsyncStorage.getItem(STORAGE_KEYS.LABOR_PAYMENTS);
+      const localLaborPay: LaborPayment[] = localLaborPayData ? JSON.parse(localLaborPayData) : [];
+      if (localLaborPay.length > 0) {
+        Promise.all(localLaborPay.map(lp => setDoc(doc(db, 'labor_payments', lp.id), { ...lp, syncCode }).catch(() => {})));
       }
     }
 
@@ -487,17 +533,7 @@ export const saveCrops = async (crops: Crop[]): Promise<void> => {
   }
 };
 
-// Background non-blocking cloud write (never delays UI thread)
-const syncDocToCloud = (action: 'add' | 'update' | 'delete', type: 'crop' | 'workLog' | 'pesticideLog', payload: any) => {
-  const collectionName = type === 'crop' ? 'crops' : type === 'workLog' ? 'work_logs' : 'pesticide_logs';
-  if (action === 'delete') {
-    deleteDoc(doc(db, collectionName, payload.id))
-      .catch(() => queueOperation({ action, type, payload }));
-  } else {
-    setDoc(doc(db, collectionName, payload.id), payload)
-      .catch(() => queueOperation({ action, type, payload }));
-  }
-};
+
 
 export const addCrop = async (crop: Omit<Crop, 'id'>): Promise<Crop> => {
   const syncCode = await getSyncCode();
@@ -512,8 +548,8 @@ export const addCrop = async (crop: Omit<Crop, 'id'>): Promise<Crop> => {
   crops.push(newCrop);
   await saveCrops(crops);
 
-  // 2. Fire-and-forget background cloud sync (0ms UI lag)
-  syncDocToCloud('add', 'crop', newCrop);
+  // 2. Cloud sync
+  await syncDocToCloud('add', 'crop', newCrop);
 
   return newCrop;
 };
@@ -530,8 +566,8 @@ export const updateCrop = async (updatedCrop: Crop): Promise<void> => {
     await saveCrops(crops);
   }
 
-  // 2. Fire-and-forget background cloud sync
-  syncDocToCloud('update', 'crop', payload);
+  // 2. Cloud sync
+  await syncDocToCloud('update', 'crop', payload);
 };
 
 export const deleteCrop = async (cropId: string): Promise<void> => {
@@ -540,7 +576,7 @@ export const deleteCrop = async (cropId: string): Promise<void> => {
   await saveCrops(crops.filter((c) => c.id !== cropId));
 
   // 2. Background cloud delete
-  syncDocToCloud('delete', 'crop', { id: cropId });
+  await syncDocToCloud('delete', 'crop', { id: cropId });
 
   // Clean up related logs locally
   const logs = await getWorkLogs();
@@ -704,3 +740,50 @@ export const deletePesticideLog = async (logId: string): Promise<void> => {
   // 2. Fire-and-forget background cloud delete
   syncDocToCloud('delete', 'pesticideLog', { id: logId });
 };
+
+// --- Labor Payment API ---
+export const getLaborPayments = async (): Promise<LaborPayment[]> => {
+  try {
+    const data = await AsyncStorage.getItem(STORAGE_KEYS.LABOR_PAYMENTS);
+    return data ? JSON.parse(data) : [];
+  } catch {
+    return [];
+  }
+};
+
+export const saveLaborPayments = async (payments: LaborPayment[]): Promise<void> => {
+  try {
+    await AsyncStorage.setItem(STORAGE_KEYS.LABOR_PAYMENTS, JSON.stringify(payments));
+  } catch (e) {
+    console.error('Error saving labor payments:', e);
+  }
+};
+
+export const addLaborPayment = async (payment: Omit<LaborPayment, 'id'>): Promise<LaborPayment> => {
+  const syncCode = await getSyncCode();
+  const newPayment: LaborPayment = {
+    ...payment,
+    id: `labor-pay-${Date.now()}`,
+    syncCode,
+  };
+
+  // 1. Update local cache immediately
+  const payments = await getLaborPayments();
+  payments.push(newPayment);
+  await saveLaborPayments(payments);
+
+  // 2. Fire-and-forget background cloud sync
+  syncDocToCloud('add', 'laborPayment', newPayment);
+
+  return newPayment;
+};
+
+export const deleteLaborPayment = async (paymentId: string): Promise<void> => {
+  // 1. Update local cache immediately
+  const payments = await getLaborPayments();
+  await saveLaborPayments(payments.filter((p) => p.id !== paymentId));
+
+  // 2. Background cloud delete
+  syncDocToCloud('delete', 'laborPayment', { id: paymentId });
+};
+

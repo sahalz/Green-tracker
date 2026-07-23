@@ -5,7 +5,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Print from 'expo-print';
 import * as Sharing from 'expo-sharing';
 
-import { Crop, WorkLog, PesticideLog } from './src/types';
+import { Crop, WorkLog, PesticideLog, LaborPayment } from './src/types';
 import { Language, TRANSLATIONS } from './src/translations';
 import {
   initializeDatabase,
@@ -14,6 +14,8 @@ import {
   getWorkLogs,
   saveWorkLogs,
   getPesticideLogs,
+  getLaborPayments,
+  saveLaborPayments,
   addCrop,
   updateCrop,
   deleteCrop,
@@ -21,6 +23,8 @@ import {
   deleteWorkLog,
   addPesticideLog,
   deletePesticideLog,
+  addLaborPayment,
+  deleteLaborPayment,
   getSyncCode,
   saveSyncCode,
   syncPendingQueue,
@@ -40,6 +44,7 @@ export default function App() {
   const [crops, setCrops] = useState<Crop[]>([]);
   const [workLogs, setWorkLogs] = useState<WorkLog[]>([]);
   const [pesticideLogs, setPesticideLogs] = useState<PesticideLog[]>([]);
+  const [laborPayments, setLaborPayments] = useState<LaborPayment[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   
   // Language State
@@ -179,10 +184,11 @@ export default function App() {
   };
 
   const refreshAllData = async () => {
-    let [c, w, p] = await Promise.all([
+    let [c, w, p, lp] = await Promise.all([
       getCrops(),
       getWorkLogs(),
-      getPesticideLogs()
+      getPesticideLogs(),
+      getLaborPayments()
     ]);
 
     // Check for kids older than 3 months to automatically transition them to males & females
@@ -234,6 +240,7 @@ export default function App() {
     setCrops(c);
     setWorkLogs(w);
     setPesticideLogs(p);
+    setLaborPayments(lp);
   };
 
   useEffect(() => {
@@ -324,6 +331,16 @@ export default function App() {
 
   const handleDeletePesticideLog = async (id: string) => {
     await deletePesticideLog(id);
+    await refreshAllData();
+  };
+
+  const handleAddLaborPayment = async (paymentData: Omit<LaborPayment, 'id'>) => {
+    await addLaborPayment(paymentData);
+    await refreshAllData();
+  };
+
+  const handleDeleteLaborPayment = async (id: string) => {
+    await deleteLaborPayment(id);
     await refreshAllData();
   };
 
@@ -791,6 +808,7 @@ export default function App() {
           crops={crops}
           workLogs={workLogs}
           pesticideLogs={pesticideLogs}
+          laborPayments={laborPayments}
           onAddCrop={handleAddCrop}
           onUpdateCrop={handleUpdateCrop}
           onDeleteCrop={handleDeleteCrop}
@@ -800,6 +818,8 @@ export default function App() {
           onDeleteWorkLog={handleDeleteWorkLog}
           onAddPesticideLog={handleAddPesticideLog}
           onDeletePesticideLog={handleDeletePesticideLog}
+          onAddLaborPayment={handleAddLaborPayment}
+          onDeleteLaborPayment={handleDeleteLaborPayment}
           language={language}
         />
       );

@@ -119,8 +119,8 @@ export default function FishTab({
       Alert.alert(
         language === 'ml' ? 'അറിയിപ്പ്' : 'Notice',
         language === 'ml' 
-          ? 'നോട്ടിഫിക്കേഷൻ പ്രവർത്തിക്കാൻ ഇൻസ്റ്റാൾ ചെയ്ത APK ബിൽഡ് ആവശ്യമാണ് (Expo Go യിൽ ഡിസേബിൾ ആണ്).' 
-          : 'Notifications require an installed standalone APK build (disabled in Expo Go dev app).'
+          ? 'നോട്ടിഫിക്കേഷൻ അനുവദിക്കാൻ അനുമതി ആവശ്യമാണ്. ഫോൺ ക്രമീകരണങ്ങളിൽ നോട്ടിഫിക്കേഷൻ അനുമതി നൽകിയിട്ടുണ്ടോ എന്ന് പരിശോധിക്കുക.' 
+          : 'Could not schedule notification. Please check system notification permissions in device settings.'
       );
     }
   };
@@ -292,7 +292,7 @@ export default function FishTab({
 
     const logData = {
       cropId: selectedCrop.id,
-      activityType: 'Buying',
+      activityType: 'BuyFish',
       date: buyDate,
       durationMinutes: 0,
       laborCost: 0,
@@ -727,7 +727,7 @@ export default function FishTab({
             {cropWorkLogs.sort((a,b) => new Date(b.date).getTime() - new Date(a.date).getTime()).map((log) => {
               // Determine emoji based on activity type
               let logEmoji = '⚙️';
-              if (log.activityType === 'Buying') logEmoji = '🛒';
+              if (log.activityType === 'Buying' || log.activityType === 'BuyFish') logEmoji = '🛒';
               else if (log.activityType === 'Feed / Food') logEmoji = '🌾';
               else if (log.activityType === 'Water pH') logEmoji = '🧪';
               else if (log.activityType === 'Revenue') logEmoji = '💰';
@@ -740,9 +740,11 @@ export default function FishTab({
                     <View style={styles.timelineHeader}>
                       <Text style={styles.timelineActivity}>
                         {logEmoji} {
-                          log.activityType === 'Revenue' 
-                            ? (language === 'ml' ? 'വിൽപ്പന വരുമാനം' : 'Sale Revenue')
-                            : translateActivity(log.activityType, language)
+                          (log.activityType === 'Buying' || log.activityType === 'BuyFish')
+                            ? (language === 'ml' ? 'മീൻ കുഞ്ഞുങ്ങളെ വാങ്ങൽ' : 'Buying Fingerlings')
+                            : log.activityType === 'Revenue' 
+                              ? (language === 'ml' ? 'വിൽപ്പന വരുമാനം' : 'Sale Revenue')
+                              : translateActivity(log.activityType, language)
                         }
                       </Text>
                       <Text style={[styles.timelineCost, log.activityType === 'Revenue' && { color: '#2e7d32' }]}>
@@ -754,7 +756,7 @@ export default function FishTab({
                     
                     {/* Activity Specific Rendering */}
                     <View style={styles.timelineHarvestDetails}>
-                      {log.activityType === 'Buying' && log.fishCount && (
+                      {(log.activityType === 'Buying' || log.activityType === 'BuyFish') && log.fishCount && (
                         <Text style={styles.timelineDetailText}>
                           🐟 {language === 'ml' ? 'വാങ്ങിയത്: ' : 'Fingerlings stocked: '}{log.fishCount} nos
                         </Text>

@@ -106,9 +106,9 @@ export default function Dashboard({ crops, workLogs, pesticideLogs, onSelectCrop
     const isCard = crop.type.toLowerCase().includes('cardamom') || 
                    crop.type.toLowerCase().includes('cardomom') || 
                    crop.type.includes('ഏല');
-    if (isCard) {
+    if (isCard && crop.sprayReminderEnabled !== false) {
       const cropSprays = pesticideLogs
-        .filter(p => (p.cropIds || []).includes(crop.id))
+        .filter(p => (p.cropIds || []).includes(crop.id) && p.requiresReminder !== false)
         .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
 
       if (cropSprays.length > 0) {

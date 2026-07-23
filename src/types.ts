@@ -25,6 +25,7 @@ export interface Crop {
   syncCode?: string;
   feedReminderEnabled?: boolean;
   feedReminderTime?: string;
+  sprayReminderEnabled?: boolean;
 }
 
 export interface WorkLog {
@@ -72,6 +73,18 @@ export interface PesticideLog {
   noOfWorkers?: number;
   laborCostPerWorker?: number;
   syncCode?: string;
+  requiresReminder?: boolean;
 }
+
+export interface LaborPayment {
+  id: string;
+  cropId: string;
+  date: string;
+  amountPaid: number;
+  paymentMode?: string;
+  notes?: string;
+  syncCode?: string;
+}
+
 
 
